@@ -1,0 +1,480 @@
+{
+  "Uuid": "c5fbdbc0-5c2f-40e3-b8b9-1be6bcf50e35",
+  "IsCustomNode": false,
+  "Description": "Pick JPGs, read EXIF GPS, convert to ITM, then draw points, embedded photos in a grid and leader lines in the active drawing via AutoLISP.",
+  "Name": "GPS_Photos_ITM 2",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [
+    {
+      "Id": "5f8322824fec453ea69f9823089d4c5c",
+      "Name": "Trigger (toggle to run again; picker opens each run)",
+      "Type": "boolean",
+      "Type2": "boolean",
+      "Value": "false",
+      "Description": "Enables selection between True and False"
+    },
+    {
+      "Id": "c4b1214720524e4c81d2a8cef8198e43",
+      "Name": "Photo width (m)",
+      "Type": "number",
+      "Type2": "number",
+      "Value": "20",
+      "NumberType": "Double",
+      "Description": "Creates a number."
+    },
+    {
+      "Id": "ea2f291a10d645a5a0026df4e39ffcb3",
+      "Name": "Grid columns",
+      "Type": "number",
+      "Type2": "number",
+      "Value": "4",
+      "NumberType": "Double",
+      "Description": "Creates a number."
+    },
+    {
+      "Id": "63cd1a10324c4443b0a7303cae79a5f8",
+      "Name": "Gap between photos (m)",
+      "Type": "number",
+      "Type2": "number",
+      "Value": "2",
+      "NumberType": "Double",
+      "Description": "Creates a number."
+    },
+    {
+      "Id": "0b4ef7bef8724391babdd4d4176f2809",
+      "Name": "Grid offset above northernmost point (m)",
+      "Type": "number",
+      "Type2": "number",
+      "Value": "20",
+      "NumberType": "Double",
+      "Description": "Creates a number."
+    },
+    {
+      "Id": "3821bd6eacab46879572e6a10dfffb4b",
+      "Name": "Send to Civil 3D (False = dry run only)",
+      "Type": "boolean",
+      "Type2": "boolean",
+      "Value": "true",
+      "Description": "Enables selection between True and False"
+    }
+  ],
+  "Outputs": [
+    {
+      "Id": "126cc27102544b6fb71f060d8b1a4b95",
+      "Name": "Result: status, message, count",
+      "Type": "unknown",
+      "InitialValue": "",
+      "Description": "Visualizes a node's output"
+    }
+  ],
+  "Nodes": [
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "\"\"\"Civil 3D Dynamo CPython3 (v2). Picks JPGs, reads EXIF GPS, converts WGS84 -> ITM (EPSG:2157), then\nwrites an AutoLISP file and sends (load ...) to Civil 3D. LISP draws, in the ACTIVE drawing, a point + 1 m ring\nat each photo location, the photo (embedded as an OLE picture) in a grid, a leader line and a label.\nNo AutoCAD .NET objects are touched from Python (they fail to load in this Dynamo).\nIN[0] trigger (value ignored; toggle to run again), IN[1] photo width (m), IN[2] grid columns,\nIN[3] gap between photos (m), IN[4] grid offset above northernmost point (m),\nIN[5] send to Civil 3D (False = dry run: pick photos, read GPS, convert only).\"\"\"\nimport os, math, struct\n\n# ---------- JPEG / EXIF (pure python) ----------\ndef read_meta(path):\n    \"\"\"Return dict(lat, lon, w, h) (w,h after EXIF rotation) or None if there is no GPS.\"\"\"\n    with open(path, 'rb') as fh:\n        data = fh.read(4 * 1024 * 1024)\n    if data[:2] != b'\\xff\\xd8':\n        return None\n    pos, tiff, size_px = 2, None, None\n    while pos + 4 <= len(data):\n        if data[pos] != 0xFF:\n            break\n        marker = data[pos + 1]\n        if marker == 0xDA:\n            break\n        seg = struct.unpack('>H', data[pos + 2:pos + 4])[0]\n        if marker == 0xE1 and data[pos + 4:pos + 10] == b'Exif\\x00\\x00' and tiff is None:\n            tiff = data[pos + 10:pos + 2 + seg]\n        if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC) and size_px is None:\n            size_px = struct.unpack('>HH', data[pos + 5:pos + 9])[::-1]   # (width, height)\n        pos += 2 + seg\n    if tiff is None or size_px is None:\n        return None\n    e = '<' if tiff[:2] == b'II' else '>'\n    def u16(o): return struct.unpack(e + 'H', tiff[o:o + 2])[0]\n    def u32(o): return struct.unpack(e + 'I', tiff[o:o + 4])[0]\n    def ifd(off):\n        out = {}\n        for i in range(u16(off)):\n            b = off + 2 + i * 12\n            out[u16(b)] = (u16(b + 2), u32(b + 4), b + 8)\n        return out\n    def rationals(entry):\n        typ, cnt, vo = entry\n        o = u32(vo)\n        return [u32(o + 8 * i) / float(u32(o + 8 * i + 4) or 1) for i in range(cnt)]\n    def ascii_(entry):\n        typ, cnt, vo = entry\n        o = vo if cnt <= 4 else u32(vo)\n        return tiff[o:o + cnt].split(b'\\x00')[0].decode('ascii', 'ignore')\n    root = ifd(u32(4))\n    if 0x8825 not in root:\n        return None\n    gps = ifd(u32(root[0x8825][2]))\n    if not all(k in gps for k in (1, 2, 3, 4)):\n        return None\n    def dms(v): return v[0] + v[1] / 60.0 + v[2] / 3600.0\n    lat, lon = dms(rationals(gps[2])), dms(rationals(gps[4]))\n    if ascii_(gps[1]).upper().startswith('S'): lat = -lat\n    if ascii_(gps[3]).upper().startswith('W'): lon = -lon\n    w, h = size_px\n    if 0x0112 in root and u16(root[0x0112][2]) in (5, 6, 7, 8):\n        w, h = h, w\n    return {'lat': lat, 'lon': lon, 'w': w, 'h': h}\n\n# ---------- WGS84 / ETRS89 -> ITM (EPSG:2157), transverse Mercator on GRS80 ----------\ndef to_itm(lat_deg, lon_deg):\n    a = 6378137.0; f = 1 / 298.257222101; e2 = 2 * f - f * f\n    lat0 = math.radians(53.5); lon0 = math.radians(-8.0); k0 = 0.99982; fe = 600000.0; fn = 750000.0\n    def meridian(p):\n        e4 = e2 * e2; e6 = e4 * e2\n        return a * ((1 - e2 / 4 - 3 * e4 / 64 - 5 * e6 / 256) * p\n                    - (3 * e2 / 8 + 3 * e4 / 32 + 45 * e6 / 1024) * math.sin(2 * p)\n                    + (15 * e4 / 256 + 45 * e6 / 1024) * math.sin(4 * p)\n                    - (35 * e6 / 3072) * math.sin(6 * p))\n    p = math.radians(lat_deg); l = math.radians(lon_deg)\n    n = a / math.sqrt(1 - e2 * math.sin(p) ** 2)\n    t = math.tan(p) ** 2; c = e2 / (1 - e2) * math.cos(p) ** 2; ep2 = e2 / (1 - e2)\n    aa = (l - lon0) * math.cos(p)\n    x = fe + k0 * n * (aa + (1 - t + c) * aa ** 3 / 6 + (5 - 18 * t + t * t + 72 * c - 58 * ep2) * aa ** 5 / 120)\n    y = fn + k0 * (meridian(p) - meridian(lat0) + n * math.tan(p) * (aa * aa / 2\n        + (5 - t + 9 * c + 4 * c * c) * aa ** 4 / 24 + (61 - 58 * t + t * t + 600 * c - 330 * ep2) * aa ** 6 / 720))\n    return x, y\n\nCLIP_PS1 = \"\"\"param([string]$Path,[int]$MaxW=1600)\nAdd-Type -AssemblyName System.Windows.Forms, System.Drawing\n$src=[System.Drawing.Image]::FromFile($Path)\nforeach($p in $src.PropertyItems){ if($p.Id -eq 0x0112){ $o=[BitConverter]::ToUInt16($p.Value,0); if($o -eq 6){$src.RotateFlip('Rotate90FlipNone')} elseif($o -eq 8){$src.RotateFlip('Rotate270FlipNone')} elseif($o -eq 3){$src.RotateFlip('Rotate180FlipNone')} } }\n$w=[Math]::Min($MaxW,$src.Width); $h=[int]($src.Height*$w/$src.Width)\n$bmp=New-Object System.Drawing.Bitmap($w,$h)\n$g=[System.Drawing.Graphics]::FromImage($bmp); $g.InterpolationMode='HighQualityBicubic'; $g.DrawImage($src,0,0,$w,$h); $g.Dispose(); $src.Dispose()\n$tmp=Join-Path $env:TEMP 'gps_paint_photo.png'\n$bmp.Save($tmp,[System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()\nGet-Process mspaint -ErrorAction SilentlyContinue | Stop-Process -Force\nStart-Sleep -Milliseconds 500\nStart-Process mspaint -ArgumentList ('\"'+$tmp+'\"')\nStart-Sleep -Seconds 4\n$sh=New-Object -ComObject WScript.Shell\n$null=$sh.AppActivate('Paint')\nStart-Sleep -Milliseconds 600\n$sh.SendKeys('^a')\nStart-Sleep -Milliseconds 400\n$sh.SendKeys('^c')\nStart-Sleep -Milliseconds 800\n\"\"\"\n\nBMP_PS1 = \"\"\"$MaxW=1600; $Path=(Get-Content (Join-Path $env:TEMP 'gps_clip_path.txt') -Raw).Trim()\nAdd-Type -AssemblyName System.Windows.Forms, System.Drawing\n$src=[System.Drawing.Image]::FromFile($Path)\nforeach($p in $src.PropertyItems){ if($p.Id -eq 0x0112){ $o=[BitConverter]::ToUInt16($p.Value,0); if($o -eq 6){$src.RotateFlip('Rotate90FlipNone')} elseif($o -eq 8){$src.RotateFlip('Rotate270FlipNone')} elseif($o -eq 3){$src.RotateFlip('Rotate180FlipNone')} } }\n$w=[Math]::Min($MaxW,$src.Width); $h=[int]($src.Height*$w/$src.Width)\n$bmp=New-Object System.Drawing.Bitmap($w,$h)\n$g=[System.Drawing.Graphics]::FromImage($bmp); $g.InterpolationMode='HighQualityBicubic'; $g.DrawImage($src,0,0,$w,$h); $g.Dispose(); $src.Dispose()\n[System.Windows.Forms.Clipboard]::SetImage($bmp)\nif ([System.Windows.Forms.Clipboard]::ContainsImage()) { Set-Content (Join-Path $env:TEMP 'gps_clip_ok.flag') 'ok' }\n\"\"\"\n\nWATCH_PS1 = \"\"\"$Flag='@@FLAG@@'\nAdd-Type -TypeDefinition @'\nusing System; using System.Text; using System.Runtime.InteropServices;\npublic class GpsWin {\n  public delegate bool EnumProc(IntPtr h, IntPtr l);\n  [DllImport(\"user32.dll\")] public static extern bool EnumWindows(EnumProc cb, IntPtr l);\n  [DllImport(\"user32.dll\", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, StringBuilder s, int n);\n  [DllImport(\"user32.dll\")] public static extern bool IsWindowVisible(IntPtr h);\n  [DllImport(\"user32.dll\")] public static extern bool SetForegroundWindow(IntPtr h);\n  public static IntPtr Find(string part) {\n    IntPtr found = IntPtr.Zero;\n    EnumWindows(delegate(IntPtr h, IntPtr l) {\n      if (!IsWindowVisible(h)) return true;\n      StringBuilder sb = new StringBuilder(256); GetWindowText(h, sb, 256);\n      if (sb.ToString().IndexOf(part, StringComparison.OrdinalIgnoreCase) >= 0) { found = h; return false; }\n      return true; }, IntPtr.Zero);\n    return found; } }\n'@\n$sh = New-Object -ComObject WScript.Shell\n$t0 = Get-Date\nwhile (((Get-Date) - $t0).TotalMinutes -lt 15 -and -not (Test-Path $Flag)) {\n  $h = [GpsWin]::Find('OLE Text')\n  if ($h -ne [IntPtr]::Zero) {\n    [void][GpsWin]::SetForegroundWindow($h)\n    Start-Sleep -Milliseconds 300\n    $sh.SendKeys('{ENTER}')\n    Start-Sleep -Milliseconds 900\n  } else { Start-Sleep -Milliseconds 250 }\n}\n\"\"\"\n\ndef enc_cmd(script):\n    import base64\n    b64 = base64.b64encode(script.encode('utf-16-le')).decode('ascii')\n    return 'powershell -STA -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand ' + b64\n\ndef lisp_str(text):\n    return str(text).replace('\\\\', '\\\\\\\\').replace('\"', '\\\\\"')\n\ndef fwd(path):\n    return str(path).replace('\\\\', '/')\n\ndef build_lisp(items, ps1_path, bmp_path, watch_path='', flag_path=''):\n    \"\"\"items: list of dicts(path,label,e,n,llx,lly,w,h) in metres. Returns AutoLISP source.\"\"\"\n    out = []\n    add = out.append\n    add('(vl-load-com)')\n    add('(setq *gp-k* (if (= (getvar \"INSUNITS\") 4) 1000.0 1.0))')\n    add('(setq *gp-ps1* \"%s\")' % lisp_str(fwd(ps1_path)))\n    add('(setq *gp-bmp* \"%s\")' % lisp_str(fwd(bmp_path)))\n    add('(setq *gp-bmpcmd* \"%s\")' % enc_cmd(BMP_PS1))\n    add('(setq *gp-pathfile* \"%s\")' % lisp_str(fwd(os.path.join(os.path.dirname(bmp_path), 'gps_clip_path.txt'))))\n    add('(setq *gp-okflag* \"%s\")' % lisp_str(fwd(os.path.join(os.path.dirname(bmp_path), 'gps_clip_ok.flag'))))\n    add('(setq *gp-sh* (vlax-create-object \"WScript.Shell\"))')\n    if watch_path:\n        add('(if (findfile \"%s\") (vl-file-delete \"%s\"))' % (lisp_str(fwd(flag_path)), lisp_str(fwd(flag_path))))\n        add('(vlax-invoke-method *gp-sh* \"Run\" \"%s\" 0 :vlax-false)' % enc_cmd(WATCH_PS1.replace('@@FLAG@@', fwd(flag_path))))\n    add('(setq *gp-ok* 0 *gp-emb* 0 *gp-static* 0 *gp-fail* nil)')\n    add('(if (not (tblsearch \"LAYER\" \"PHOTO-LOC\")) (entmake (list (cons 0 \"LAYER\") (cons 100 \"AcDbSymbolTableRecord\") (cons 100 \"AcDbLayerTableRecord\") (cons 2 \"PHOTO-LOC\") (cons 70 0) (cons 62 3) (cons 6 \"Continuous\"))))')\n    add(\"\"\"(defun gp-new-ole (prev / e)\n  (setq e (entlast))\n  (if (and e (not (equal e prev)) (= \"OLE2FRAME\" (cdr (assoc 0 (entget e))))) e nil))\n(defun gp-embed (path ll w h / prev ent obj mn mx pf)\n  (setq prev (entlast))\n  (command \"_.ZOOM\" \"_C\" ll (* 40.0 *gp-k*))\n  (if (findfile *gp-okflag*) (vl-file-delete *gp-okflag*))\n  (setq pf (open *gp-pathfile* \"w\"))\n  (if pf (progn (write-line path pf) (close pf)))\n  (vlax-invoke-method *gp-sh* \"Run\" *gp-bmpcmd* 0 :vlax-true)\n  (if (findfile *gp-okflag*)\n    (progn\n      (command \"_.PASTECLIP\" ll)\n      (setq ent (gp-new-ole prev))))\n  (if ent\n    (progn\n      (setq obj (vlax-ename->vla-object ent))\n      (vla-put-LockAspectRatio obj :vlax-false)\n      (vla-put-Width obj (* w *gp-k*))\n      (vla-put-Height obj (* h *gp-k*))\n      (vla-put-Layer obj \"PHOTO-LOC\")\n      (vla-getboundingbox obj (quote mn) (quote mx))\n      (setq mn (vlax-safearray->list mn))\n      (vla-move obj (vlax-3d-point mn) (vlax-3d-point ll))\n      T)\n    nil))\"\"\")\n    add(\"\"\"(defun gp-photo (path label e n llx lly w h / loc ll r)\n  (setq loc (list (* e *gp-k*) (* n *gp-k*) 0.0)\n        ll  (list (* llx *gp-k*) (* lly *gp-k*) 0.0))\n  (entmake (list (cons 0 \"POINT\") (cons 8 \"PHOTO-LOC\") (cons 10 loc)))\n  (entmake (list (cons 0 \"CIRCLE\") (cons 8 \"PHOTO-LOC\") (cons 10 loc) (cons 40 *gp-k*)))\n  (entmake (list (cons 0 \"LINE\") (cons 8 \"PHOTO-LOC\") (cons 10 loc)\n                 (cons 11 (list (+ (car ll) (* 0.5 w *gp-k*)) (cadr ll) 0.0))))\n  (entmake (list (cons 0 \"MTEXT\") (cons 100 \"AcDbEntity\") (cons 8 \"PHOTO-LOC\") (cons 100 \"AcDbMText\")\n                 (cons 10 (list (car ll) (- (cadr ll) (* 0.4 *gp-k*)) 0.0))\n                 (cons 40 (* 0.8 *gp-k*)) (cons 71 1) (cons 1 label)))\n  (setq r (vl-catch-all-apply (quote gp-embed) (list path ll w h)))\n  (if (and (not (vl-catch-all-error-p r)) r)\n    (setq *gp-ok* (1+ *gp-ok*))\n    (setq *gp-fail* (cons path *gp-fail*))))\"\"\")\n    add('(setq *gp-os* (getvar \"OSMODE\") *gp-ce* (getvar \"CMDECHO\"))')\n    add('(setvar \"OSMODE\" 0)(setvar \"CMDECHO\" 0)(setvar \"PDMODE\" 34)(setvar \"PDSIZE\" (* 0.5 *gp-k*))')\n    for it in items:\n        add('(gp-photo \"%s\" \"%s\" %.3f %.3f %.3f %.3f %.3f %.3f)' % (\n            lisp_str(fwd(it['path'])), lisp_str(it['label']), it['e'], it['n'], it['llx'], it['lly'], it['w'], it['h']))\n    add('(command \"_.ZOOM\" \"_E\")')\n    add('(setvar \"OSMODE\" *gp-os*)(setvar \"CMDECHO\" *gp-ce*)')\n    if watch_path:\n        add('(setq *gp-f* (open \"%s\" \"w\"))(if *gp-f* (close *gp-f*))' % lisp_str(fwd(flag_path)))\n    add('(princ (strcat \"\\\\nGPS photos: \" (itoa *gp-ok*) \" of %d pasted as static pictures.\" (if *gp-fail* (strcat \" Failed: \" (vl-princ-to-string *gp-fail*)) \"\")))' % len(items))\n    add('(princ)')\n    return '\\n'.join(out) + '\\n'\n\ndef send_to_acad(command_text):\n    \"\"\"Send text to Civil 3D's command line via WM_COPYDATA (no AutoCAD .NET objects needed).\"\"\"\n    import ctypes\n    from ctypes import wintypes\n    import System\n    try:\n        # In-process: queue the text on the command line exactly as if it were typed.\n        post = ctypes.WinDLL('accore.dll')['?acedPostCommand@@YA_NPEB_W@Z']\n        post.argtypes = [ctypes.c_wchar_p]\n        post.restype = ctypes.c_bool\n        if post(command_text + '\\n'):\n            return 'acedPostCommand'\n    except Exception:\n        pass\n    hwnd =int(System.Diagnostics.Process.GetCurrentProcess().MainWindowHandle.ToInt64())\n    if not hwnd:\n        raise ValueError('Could not find the Civil 3D main window.')\n    class COPYDATASTRUCT(ctypes.Structure):\n        _fields_ = [('dwData', ctypes.c_size_t), ('cbData', wintypes.DWORD), ('lpData', ctypes.c_void_p)]\n    raw = (command_text + '\\n').encode('mbcs') + b'\\x00'\n    buf = ctypes.create_string_buffer(raw)\n    cds = COPYDATASTRUCT(1, len(raw), ctypes.cast(buf, ctypes.c_void_p))\n    user32 = ctypes.windll.user32\n    user32.SendMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, ctypes.c_void_p]\n    user32.SendMessageW.restype = ctypes.c_ssize_t\n    user32.SendMessageW(hwnd, 0x004A, 0, ctypes.byref(cds))   # WM_COPYDATA\n    return 'WM_COPYDATA'\n\ndef pick_photos(start_folder):\n    \"\"\"Multi-select file dialog; returns the chosen paths.\"\"\"\n    import System\n    from System.Threading import Thread, ThreadStart, ApartmentState\n    import clr\n    clr.AddReference('System.Windows.Forms')\n    from System.Windows.Forms import OpenFileDialog, DialogResult\n    picked = []\n    def show():\n        dlg = OpenFileDialog()\n        dlg.Title = 'Select photos with GPS'\n        dlg.Filter = 'JPEG photos (*.jpg;*.jpeg)|*.jpg;*.jpeg|All files (*.*)|*.*'\n        dlg.Multiselect = True\n        if start_folder and os.path.isdir(start_folder):\n            dlg.InitialDirectory = start_folder\n        if dlg.ShowDialog() == DialogResult.OK:\n            for f in dlg.FileNames:\n                picked.append(str(f))\n    if Thread.CurrentThread.GetApartmentState() == ApartmentState.STA:\n        show()\n    else:\n        t = Thread(ThreadStart(show))\n        t.SetApartmentState(ApartmentState.STA)\n        t.Start()\n        t.Join()\n    return picked\n\ndef run():\n    stage = 'Starting'\n    try:\n        width_m = float(IN[1]); cols = max(1, int(float(IN[2])))\n        gap_m = float(IN[3]); offset_m = float(IN[4])\n        send = bool(IN[5])\n        if width_m <= 0:\n            raise ValueError('Photo width must be greater than zero.')\n        memo = os.path.join(os.environ.get('APPDATA', ''), 'gps_photos_last_folder.txt')\n        folder = ''\n        try:\n            folder = open(memo).read().strip()\n        except Exception:\n            pass\n        if not folder:\n            folder = os.path.join(os.path.expanduser('~'), 'Pictures')\n\n        stage = 'Selecting photos'\n        chosen = pick_photos(folder)\n        if not chosen:\n            return ['CANCELLED', 'No photos selected.', None]\n        try:\n            open(memo, 'w').write(os.path.dirname(chosen[0]))\n        except Exception:\n            pass\n\n        stage = 'Reading GPS from photos'\n        photos, skipped = [], []\n        for full in sorted(chosen, key=lambda s: os.path.basename(s).lower()):\n            fn_ = os.path.basename(full)\n            try:\n                meta = read_meta(full)\n            except Exception:\n                meta = None\n            if meta is None:\n                skipped.append(fn_)\n                continue\n            e, n = to_itm(meta['lat'], meta['lon'])\n            photos.append({'path': full, 'label': '%s\\\\P' % fn_, 'name': fn_, 'e': e, 'n': n, 'pw': meta['w'], 'ph': meta['h']})\n        if not photos:\n            return ['ERROR', 'None of the selected photos has GPS' + (' (no GPS: %s)' % ', '.join(skipped) if skipped else ''), None]\n        summary = '; '.join('%s E %.3f N %.3f' % (p['name'], p['e'], p['n']) for p in photos)\n        if skipped:\n            summary += ' | no GPS: ' + ', '.join(skipped)\n        if not send:\n            return ['DRY RUN - drawing untouched', summary + '. Set \"Send to Civil 3D\" to True to draw.', len(photos)]\n\n        stage = 'Laying out grid'\n        grid_e = min(p['e'] for p in photos)\n        grid_n = max(p['n'] for p in photos) + offset_m\n        rows = [photos[i:i + cols] for i in range(0, len(photos), cols)]\n        y = grid_n\n        for row in rows:\n            heights = [width_m * p['ph'] / float(p['pw']) for p in row]\n            for c, (p, h) in enumerate(zip(row, heights)):\n                p['llx'] = grid_e + c * (width_m + gap_m)\n                p['lly'] = y\n                p['w'] = width_m\n                p['h'] = h\n                p['label'] = '%s\\\\PE %.3f  N %.3f (ITM)' % (p['name'], p['e'], p['n'])\n            y += max(heights) + gap_m + 3.0\n\n        stage = 'Writing LISP'\n        tmp = os.environ.get('TEMP', '.')\n        ps1 = os.path.join(tmp, 'gps_clip.ps1')\n        lsp = os.path.join(tmp, 'gps_photos.lsp')\n        bmp = os.path.join(tmp, 'gps_clip_bmp.ps1')\n        open(ps1, 'w').write(CLIP_PS1)\n        open(bmp, 'w').write(BMP_PS1)\n        wat = os.path.join(tmp, 'gps_watch.ps1')\n        flag = os.path.join(tmp, 'gps_done.flag')\n        open(wat, 'w').write(WATCH_PS1)\n        open(lsp, 'w').write(build_lisp(photos, ps1, bmp, wat, flag))\n        load = '(load \"%s\")' % lisp_str(fwd(lsp))\n        stage = 'Sending to Civil 3D'\n        try:\n            via = send_to_acad(load)\n        except Exception as ex:\n            return ['LISP WRITTEN - send failed', 'Type this in the Civil 3D command line: ' + load + '   (send error: %s)' % ex, len(photos)]\n        return ['SENT via ' + via, 'Civil 3D is drawing %d photo(s) into the ACTIVE drawing, pasting each one from the clipboard (a few seconds each; watch the command line; zooms to extents when done, then QSAVE). ITM: %s. If nothing happens, type: %s' % (len(photos), summary, load), len(photos)]\n    except Exception as ex:\n        return ['ERROR', stage + ': ' + str(ex), None]\n\nOUT = run()\n",
+      "Engine": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "2d4a6898ef654503922dd11a891d1304",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [
+        {
+          "Id": "45ea7d8c58e34cadbed27f083ba6962b",
+          "Name": "Trigger",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "4f941228f60441b6ac302ca23805503e",
+          "Name": "Photo_width_m",
+          "Description": "Input #1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "bb6e753f1b95499b834970afcc5a6c56",
+          "Name": "Grid_columns",
+          "Description": "Input #2",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "8652dda2a3844c0bae14fff6408cc722",
+          "Name": "Gap_m",
+          "Description": "Input #3",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "e29358587301483ebdc1a2c48d1cc5ee",
+          "Name": "Grid_offset_m",
+          "Description": "Input #4",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "5436514587c043d9ba09d7602755cc8b",
+          "Name": "Send_to_Civil3D",
+          "Description": "Input #5",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "4c2f8521f9c5481fb67b17cabed8bf91",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.BoolSelector, CoreNodeModels",
+      "Id": "5f8322824fec453ea69f9823089d4c5c",
+      "NodeType": "BooleanInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "e4022a2e38b144289afbeaabdafc728b",
+          "Name": "",
+          "Description": "bool",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Enables selection between True and False",
+      "InputValue": false
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.DoubleInput, CoreNodeModels",
+      "NumberType": "Double",
+      "Id": "c4b1214720524e4c81d2a8cef8198e43",
+      "NodeType": "NumberInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "b376596644fc404f932445af8f5d9a1e",
+          "Name": "",
+          "Description": "number",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a number.",
+      "InputValue": 20.0
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.DoubleInput, CoreNodeModels",
+      "NumberType": "Double",
+      "Id": "ea2f291a10d645a5a0026df4e39ffcb3",
+      "NodeType": "NumberInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "99481e79bb4340219a10543390607f97",
+          "Name": "",
+          "Description": "number",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a number.",
+      "InputValue": 4.0
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.DoubleInput, CoreNodeModels",
+      "NumberType": "Double",
+      "Id": "63cd1a10324c4443b0a7303cae79a5f8",
+      "NodeType": "NumberInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "1f3c1ec3ba504b3aa487899343419ff1",
+          "Name": "",
+          "Description": "number",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a number.",
+      "InputValue": 2.0
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.DoubleInput, CoreNodeModels",
+      "NumberType": "Double",
+      "Id": "0b4ef7bef8724391babdd4d4176f2809",
+      "NodeType": "NumberInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "05f8ef86c4694bdd964ce0021c43ae43",
+          "Name": "",
+          "Description": "number",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a number.",
+      "InputValue": 20.0
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.BoolSelector, CoreNodeModels",
+      "Id": "3821bd6eacab46879572e6a10dfffb4b",
+      "NodeType": "BooleanInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "05215af4ad474895a05342055d27a860",
+          "Name": "",
+          "Description": "bool",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Enables selection between True and False",
+      "InputValue": true
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "WatchWidth": 450.0,
+      "WatchHeight": 220.0,
+      "Id": "126cc27102544b6fb71f060d8b1a4b95",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "e0dac340b5814d63ac0e8733df720d7d",
+          "Name": "",
+          "Description": "Input",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "1bcb044f0d324fd19883cee2b9f6f214",
+          "Name": "",
+          "Description": "Output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualizes a node's output"
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "4c2f8521f9c5481fb67b17cabed8bf91",
+      "End": "e0dac340b5814d63ac0e8733df720d7d",
+      "Id": "73fee1cec89149cb838bea7bf5ddf8e0",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "e4022a2e38b144289afbeaabdafc728b",
+      "End": "45ea7d8c58e34cadbed27f083ba6962b",
+      "Id": "dd9614af770240f3b5f888187b18c867",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "b376596644fc404f932445af8f5d9a1e",
+      "End": "4f941228f60441b6ac302ca23805503e",
+      "Id": "d97e71db668348cf978307d3d3d06202",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "99481e79bb4340219a10543390607f97",
+      "End": "bb6e753f1b95499b834970afcc5a6c56",
+      "Id": "8188372ca0224d1182e15b2514fb1e9c",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "1f3c1ec3ba504b3aa487899343419ff1",
+      "End": "8652dda2a3844c0bae14fff6408cc722",
+      "Id": "c5cc6b9efd2d4793af10a07ac9563034",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "05f8ef86c4694bdd964ce0021c43ae43",
+      "End": "e29358587301483ebdc1a2c48d1cc5ee",
+      "Id": "a2da7439dce540fabde3d93f1fde0336",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "05215af4ad474895a05342055d27a860",
+      "End": "5436514587c043d9ba09d7602755cc8b",
+      "Id": "317f1ae6b1c14cf4a1bbd40b32dee73d",
+      "IsHidden": "False"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [],
+  "EnableLegacyPolyCurveBehavior": true,
+  "Thumbnail": "",
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [
+    {
+      "ExtensionGuid": "28992e1d-abb9-417f-8b1b-05e053bee670",
+      "Name": "Properties",
+      "Version": "3.7",
+      "Data": {}
+    }
+  ],
+  "Author": "",
+  "Linting": {
+    "activeLinter": "None",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": false,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "3.7.0.11777",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "_Background Preview",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "ConnectorPins": [],
+    "NodeViews": [
+      {
+        "Id": "2d4a6898ef654503922dd11a891d1304",
+        "Name": "GPS photos to ITM",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 600.0,
+        "Y": 150.0
+      },
+      {
+        "Id": "5f8322824fec453ea69f9823089d4c5c",
+        "Name": "Trigger (toggle to run again; picker opens each run)",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 100.0,
+        "Y": 0.0
+      },
+      {
+        "Id": "c4b1214720524e4c81d2a8cef8198e43",
+        "Name": "Photo width (m)",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 100.0,
+        "Y": 100.0
+      },
+      {
+        "Id": "ea2f291a10d645a5a0026df4e39ffcb3",
+        "Name": "Grid columns",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 100.0,
+        "Y": 200.0
+      },
+      {
+        "Id": "63cd1a10324c4443b0a7303cae79a5f8",
+        "Name": "Gap between photos (m)",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 100.0,
+        "Y": 300.0
+      },
+      {
+        "Id": "0b4ef7bef8724391babdd4d4176f2809",
+        "Name": "Grid offset above northernmost point (m)",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 100.0,
+        "Y": 400.0
+      },
+      {
+        "Id": "3821bd6eacab46879572e6a10dfffb4b",
+        "Name": "Send to Civil 3D (False = dry run only)",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 100.0,
+        "Y": 500.0
+      },
+      {
+        "Id": "126cc27102544b6fb71f060d8b1a4b95",
+        "Name": "Result: status, message, count",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": true,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 1000.0,
+        "Y": 150.0
+      }
+    ],
+    "Annotations": [],
+    "X": 325.98049179061513,
+    "Y": -21.115606171327556,
+    "Zoom": 0.5974870948157862
+  }
+}

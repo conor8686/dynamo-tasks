@@ -1,0 +1,328 @@
+{
+  "Uuid": "18ef9079-a008-429f-b8b8-2657defea6fe",
+  "IsCustomNode": false,
+  "Description": "On run a file window opens: select the QGIS GeoTIFF (.tif); position and size are read from it, then the Revit image is resized the Revit raster image and places its top-left corner there using shared coordinates (ITM). Open the Site plan (or select the image), Create=True, Run.",
+  "Name": "R19 - Place_Aerial_Image_SharedCoords_V11",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [
+    {
+      "Id": "0c13bc933c34480a84b181fd25cb0073",
+      "Name": "Start folder for file window",
+      "Type": "string",
+      "Type2": "string",
+      "Value": "C:/Users/Conor.mcenery/Documents/Map_2026",
+      "Description": "Creates a string."
+    },
+    {
+      "Id": "c18139ce079d436b9f4cd41dcad54722",
+      "Name": "Create",
+      "Type": "boolean",
+      "Type2": "boolean",
+      "Value": "true",
+      "Description": "Enables selection between True and False"
+    }
+  ],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "CoreNodeModels.Input.StringInput, CoreNodeModels",
+      "SerializedWidth": 0.0,
+      "SerializedHeight": 0.0,
+      "Id": "0c13bc933c34480a84b181fd25cb0073",
+      "NodeType": "StringInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "02636c774f184e869f308f023252bd31",
+          "Name": "",
+          "Description": "Output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a string.",
+      "InputValue": "C:/Users/Conor.mcenery/Documents/Map_2026"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.BoolSelector, CoreNodeModels",
+      "Id": "c18139ce079d436b9f4cd41dcad54722",
+      "NodeType": "BooleanInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "13a2863b5fd54e5f95b422f84f9663eb",
+          "Name": "",
+          "Description": "Output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Enables selection between True and False",
+      "InputValue": true
+    },
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "\"\"\"Revit Dynamo CPython3. Place a Revit raster image at the real-world position and size stored in a QGIS GeoTIFF (.tif).\nIN[0] start folder for the file window (text)\nIN[1] Create (bool)\nOn every run a file window opens - select the QGIS GeoTIFF (.tif). Cancel = nothing happens.\nThe Revit image is found by the TIF's own name (selected image wins). Position/size come from the TIF, then the project's\nshared coordinates (Survey Point / project location) place it, so it works for any CRS, e.g. ITM EPSG:2157.\"\"\"\nimport clr\nimport math\nimport os\nimport struct\nclr.AddReference('RevitAPI')\nclr.AddReference('RevitAPIUI')\nclr.AddReference('RevitServices')\nclr.AddReference('System.Windows.Forms')\nfrom System.Windows.Forms import OpenFileDialog, DialogResult, MessageBox, MessageBoxButtons, MessageBoxIcon\nfrom Autodesk.Revit.DB import *\nfrom RevitServices.Persistence import DocumentManager\nfrom RevitServices.Transactions import TransactionManager\n\nM = 1.0 / 0.3048  # metres -> feet (Revit internal)\n\n\ndef read_geotiff(path):\n    \"\"\"Top-left corner, pixel size, pixel count from GeoTIFF tags (ModelPixelScale + ModelTiepoint).\"\"\"\n    f = open(path, 'rb')\n    h = f.read(8)\n    bo = '<' if h[:2] == b'II' else '>'\n    f.seek(struct.unpack(bo + 'I', h[4:8])[0])\n    n = struct.unpack(bo + 'H', f.read(2))[0]\n    tags = {}\n    for _ in range(n):\n        tag, typ, cnt, val = struct.unpack(bo + 'HHI4s', f.read(12))\n        size = {3: 2, 4: 4, 12: 8}.get(typ, 1) * cnt\n        pos = f.tell()\n        if size > 4:\n            f.seek(struct.unpack(bo + 'I', val)[0])\n            data = f.read(size)\n            f.seek(pos)\n        else:\n            data = val[:size]\n        fmt = {3: 'H', 4: 'I', 12: 'd'}.get(typ)\n        if fmt:\n            tags[tag] = struct.unpack(bo + fmt * cnt, data)\n    f.close()\n    if 33550 not in tags or 33922 not in tags:\n        raise Exception('No GeoTIFF georeferencing in %s' % path)\n    px, py = tags[33550][0], tags[33550][1]\n    i, j, _, e, nn = tags[33922][:5]\n    return e - i * px, nn + j * py, px, py, tags[256][0], tags[257][0]\n\ndef jpeg_size(path):\n    data = open(path, 'rb').read(2000000)\n    k = 2\n    while k < len(data) - 9:\n        if data[k:k + 1] != b'\\xff':\n            k += 1\n            continue\n        m = ord(data[k + 1:k + 2])\n        if m in (0xC0, 0xC1, 0xC2):\n            h, w = struct.unpack('>HH', data[k + 5:k + 9])\n            return w, h\n        k += 2 + struct.unpack('>H', data[k + 2:k + 4])[0]\n    raise Exception('Could not read JPEG size: %s' % path)\n\ndef read_world(path):\n    base, ext = os.path.splitext(path)\n    for e in ('.wld', '.jgw', '.pgw', '.tfw', ext + 'w'):\n        w = base + e\n        if os.path.exists(w):\n            a, d, b, e2, x, y = [float(v) for v in open(w).read().split()[:6]]\n            return w, a, e2, x, y\n    return None\n\ndef georef(path):\n    \"\"\"Returns (top-left E, top-left N, width m, height m, source description).\"\"\"\n    head = open(path, 'rb').read(4)\n    if head[:2] in (b'II', b'MM'):\n        e, n, px, py, cols, rows = read_geotiff(path)\n        return e, n, abs(px) * cols, abs(py) * rows, 'GeoTIFF tags, %d x %d px' % (cols, rows)\n    w = read_world(path)\n    if not w:\n        raise Exception('No world file next to %s' % path)\n    wf, a, e2, x, y = w\n    cols, rows = jpeg_size(path)\n    # world file refers to the CENTRE of the top-left pixel\n    return x - a / 2.0, y - e2 / 2.0, abs(a) * cols, abs(e2) * rows, 'world file %s, %d x %d px' % (os.path.basename(wf), cols, rows)\n\n\n\ndef confirm_source():\n    \"\"\"Pop-up asking whether the TIF came from QGIS (Raster > Conversion). True = continue.\"\"\"\n    msg = ('Is the TIF from QGIS (Raster > Conversion, or Layer > Export > Save As)?' + chr(10) + chr(10) +\n           'It must be a GeoTIFF in the SAME coordinate system as this Revit model (e.g. ITM, EPSG:2157), in metres.' + chr(10) + chr(10) +\n           'Yes = pick the TIF now      No = cancel')\n    r = MessageBox.Show(msg, 'TIF from QGIS?', MessageBoxButtons.YesNo, MessageBoxIcon.Question)\n    return r == DialogResult.Yes\n\ndef browse_tif(folder):\n    \"\"\"Open a file window; returns the chosen path or None if cancelled.\"\"\"\n    dlg = OpenFileDialog()\n    dlg.Title = 'Select the TIF image exported from QGIS'\n    dlg.Filter = 'TIF image from QGIS (*.tif;*.tiff)|*.tif;*.tiff|All files (*.*)|*.*'\n    if folder and os.path.isdir(folder):\n        dlg.InitialDirectory = folder\n    if dlg.ShowDialog() == DialogResult.OK:\n        return dlg.FileName\n    return None\n\ndef pick_tif(folder, name):\n    \"\"\"Returns the .tif path: the named one, or the newest georeferenced one in the folder.\"\"\"\n    if os.path.isfile(folder):\n        folder = os.path.dirname(folder)\n    if not os.path.isdir(folder):\n        raise Exception('Folder not found: %s' % folder)\n    tifs = [os.path.join(folder, f) for f in os.listdir(folder) if f.lower().endswith(('.tif', '.tiff'))]\n    if not tifs:\n        raise Exception('No .tif in %s - export a GeoTIFF from QGIS into this folder' % folder)\n    name = (name or '').strip()\n    if name:\n        n = name.lower()\n        hit = [t for t in tifs if os.path.basename(t).lower() in (n, n + '.tif', n + '.tiff')]\n        if not hit:\n            hit = [t for t in tifs if n in os.path.basename(t).lower()]\n        if not hit:\n            raise Exception('No .tif named \"%s\" in %s' % (name, folder))\n        tifs = hit\n    tifs.sort(key=os.path.getmtime, reverse=True)\n    for t in tifs:\n        try:\n            georef(t)\n            return t, len(tifs)\n        except Exception:\n            continue\n    raise Exception('No georeferenced .tif found in %s' % folder)\n\ndef shared_en(doc, x, y):\n    \"\"\"Shared (E, N) in feet of an internal point.\"\"\"\n    p = doc.ActiveProjectLocation.GetProjectPosition(XYZ(x, y, 0))\n    return p.EastWest, p.NorthSouth\n\ndef internal_from_shared(doc, e_ft, n_ft):\n    \"\"\"Invert shared<-internal (translation + rotation) with two probe points.\"\"\"\n    e0, n0 = shared_en(doc, 0, 0)\n    ex, nx = shared_en(doc, 1, 0)\n    ey, ny = shared_en(doc, 0, 1)\n    a, b, c, d = ex - e0, ey - e0, nx - n0, ny - n0   # J = [[a,b],[c,d]]\n    det = a * d - b * c\n    if abs(det) < 1e-9:\n        raise Exception('Project location is degenerate - set shared coordinates first')\n    de, dn = e_ft - e0, n_ft - n0\n    x = (d * de - b * dn) / det\n    y = (-c * de + a * dn) / det\n    # internal direction of shared north (for image rotation)\n    nxv = (-b) / det\n    nyv = a / det\n    return x, y, math.atan2(-nxv, nyv)\n\ndef ename(e):\n    \"\"\"Element name under Dynamo CPython3 (plain .Name can raise 'property cannot be read'). None if unreadable.\"\"\"\n    for how in (\n        lambda: clr.GetClrType(Element).GetProperty('Name').GetValue(e, None),\n        lambda: Element.Name.__get__(e),\n        lambda: e.Name,\n        lambda: ImageType.Path.__get__(e),\n    ):\n        try:\n            v = how()\n            if v:\n                return str(v)\n        except Exception:\n            pass\n    return None\n\ndef find_image(doc, uidoc, view, name_filter):\n    \"\"\"Selected image, else the image in this view named like the TIF. None if there is none (it will be inserted).\"\"\"\n    sel = [doc.GetElement(i) for i in uidoc.Selection.GetElementIds()]\n    sel = [e for e in sel if isinstance(e, ImageInstance)]\n    if len(sel) == 1:\n        return sel[0]\n    if len(sel) > 1:\n        raise Exception('More than one image selected - select just one')\n    flt = (name_filter or '').lower()\n    all_imgs = list(FilteredElementCollector(doc, view.Id).OfClass(ImageInstance))\n    found, unreadable = [], []\n    for img in all_imgs:\n        n = ename(doc.GetElement(img.GetTypeId()))\n        if n is None:\n            unreadable.append(img)\n        elif flt in n.lower():\n            found.append(img)\n    if not found and len(unreadable) == 1 and len(all_imgs) == 1:\n        found = unreadable   # name unreadable: the only image in this view\n    if len(found) > 1:\n        raise Exception('%d images match \"%s\" - select the one you want first' % (len(found), name_filter))\n    return found[0] if found else None\n\ndef find_image_type(doc, name_filter):\n    \"\"\"Existing Revit image type named like the TIF (so it is not imported twice).\"\"\"\n    flt = (name_filter or '').lower()\n    for t in FilteredElementCollector(doc).OfClass(ImageType):\n        n = ename(t)\n        if n is not None and flt in n.lower():\n            return t\n    return None\n\ndef insert_image(doc, view, path, name_filter, x, y):\n    \"\"\"Insert the TIF into the active view (top-left at x,y). Reuses an existing image type if there is one.\"\"\"\n    itype = find_image_type(doc, name_filter)\n    if itype is None:\n        itype = ImageType.Create(doc, ImageTypeOptions(path, False, ImageTypeSource.Import))\n    return ImageInstance.Create(doc, view, itype.Id, ImagePlacementOptions(XYZ(x, y, 0), BoxPlacement.TopLeft))\n\ndef run():\n    folder, create = IN[0], IN[1]\n    try:\n        if not confirm_source():\n            return 'Cancelled - export the TIF from QGIS (Raster > Conversion / Export > Save As, EPSG:2157) and run again'\n        path = browse_tif(folder)\n    except Exception:\n        path = pick_tif(folder, '')[0]   # no window available: newest .tif in the folder\n    if not path:\n        return 'Cancelled - no file selected'\n    name_filter = os.path.splitext(os.path.basename(path))[0]\n    e_m, n_m, w_m, h_m, src = georef(path)\n    doc = DocumentManager.Instance.CurrentDBDocument\n    uidoc = DocumentManager.Instance.CurrentUIApplication.ActiveUIDocument\n    view = doc.ActiveView\n    img = find_image(doc, uidoc, view, name_filter)\n\n    tx, ty, phi = internal_from_shared(doc, e_m * M, n_m * M)\n    if img is not None:\n        what = 'Image: %s (already in view - will be resized and moved)' % (ename(doc.GetElement(img.GetTypeId())) or '(name unreadable)')\n    else:\n        what = 'Image: none in this view - the TIF will be inserted into \"%s\"' % view.Name\n    lines = ['TIF: %s' % path, 'Source: %s' % src, what,\n             'Target top-left E %.3f  N %.3f m  (internal %.3f, %.3f m)' % (e_m, n_m, tx / M, ty / M),\n             'Size %.3f x %.3f m   rotation to grid %.4f deg' % (w_m, h_m, math.degrees(phi))]\n    if not create:\n        return lines + ['READY - set Create to True and Run']\n\n    TransactionManager.Instance.EnsureInTransaction(doc)\n    try:\n        if img is None:\n            img = insert_image(doc, view, path, name_filter, tx, ty)\n            lines.append('Inserted the TIF into this view')\n        try:\n            img.LockProportions = False   # TIF aspect is exact; size both sides\n        except Exception:\n            pass\n        img.Width = w_m * M\n        img.Height = h_m * M\n        doc.Regenerate()\n        # place the TOP-LEFT corner exactly (bounding box can be empty for images, so no bbox maths)\n        img.SetLocation(XYZ(tx, ty, 0), BoxPlacement.TopLeft)\n        if abs(phi) > 1e-6:   # project rotated to true north: turn the image about its top-left corner\n            ElementTransformUtils.RotateElement(doc, img.Id, Line.CreateBound(XYZ(tx, ty, 0), XYZ(tx, ty, 1)), phi)\n        doc.Regenerate()\n        TransactionManager.Instance.TransactionTaskDone()\n    except:\n        TransactionManager.Instance.ForceCloseTransaction()\n        raise\n    # verify: shared coords of the top-left corner now\n    tl = img.GetLocation(BoxPlacement.TopLeft)\n    e1, n1 = shared_en(doc, tl.X, tl.Y)\n    lines.append('DONE - image width %.3f m, height %.3f m' % (img.Width / M, img.Height / M))\n    lines.append('Top-left now E %.3f  N %.3f m' % (e1 / M, n1 / M))\n    return lines\n\nOUT = run()\n",
+      "Engine": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "5511b80f52734868b69327d514747f18",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [
+        {
+          "Id": "fe0b5ac92c0a41dd9f603b4f9defbd74",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "dad64831642f4906b339d70be45f7f96",
+          "Name": "IN[1]",
+          "Description": "Input #1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "0c33f040ab0f4a06900d004e9942f92b",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "WatchWidth": 420.0,
+      "WatchHeight": 120.0,
+      "Id": "4546c5d2c53a4fab9f400bdce31e6313",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "f6b355ce7c69475fbd7e799916f30714",
+          "Name": "",
+          "Description": "Input",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "a146cd5f1b2f4a1892f5f615d46de941",
+          "Name": "",
+          "Description": "Output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualizes a node's output"
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "02636c774f184e869f308f023252bd31",
+      "End": "fe0b5ac92c0a41dd9f603b4f9defbd74",
+      "Id": "ea5e42d917724f7cad05ff84d790a0b9",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "13a2863b5fd54e5f95b422f84f9663eb",
+      "End": "dad64831642f4906b339d70be45f7f96",
+      "Id": "75ccaf6f197c4519a938fa0ee0458c67",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "0c33f040ab0f4a06900d004e9942f92b",
+      "End": "f6b355ce7c69475fbd7e799916f30714",
+      "Id": "7b48a68b467f4cb69de950d688a961bf",
+      "IsHidden": "False"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [],
+  "EnableLegacyPolyCurveBehavior": true,
+  "Thumbnail": "",
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [
+    {
+      "ExtensionGuid": "28992e1d-abb9-417f-8b1b-05e053bee670",
+      "Name": "Properties",
+      "Version": "2.19",
+      "Data": {}
+    },
+    {
+      "ExtensionGuid": "DFBD9CC0-DB40-457A-939E-8C8555555A9D",
+      "Name": "Generative Design",
+      "Version": "9.3",
+      "Data": {}
+    }
+  ],
+  "Author": "",
+  "Linting": {
+    "activeLinter": "None",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": false,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "3.7.0.11777",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "_Background Preview",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "ConnectorPins": [],
+    "NodeViews": [
+      {
+        "Id": "0c13bc933c34480a84b181fd25cb0073",
+        "Name": "Start folder for file window",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 0.0,
+        "Y": 0.0
+      },
+      {
+        "Id": "c18139ce079d436b9f4cd41dcad54722",
+        "Name": "Create",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 105.0,
+        "Y": 450.0
+      },
+      {
+        "Id": "5511b80f52734868b69327d514747f18",
+        "Name": "Place image from GeoTIFF (CPython3)",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 500.0,
+        "Y": 120.0
+      },
+      {
+        "Id": "4546c5d2c53a4fab9f400bdce31e6313",
+        "Name": "Result / check",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 900.0,
+        "Y": 120.0
+      }
+    ],
+    "Annotations": [
+      {
+        "Id": "7ad6e6aeb3464609b6bc10de4bec5a3b",
+        "Title": "1 INPUTS",
+        "DescriptionText": "NOTE: When you run, a question window asks if the TIF is from QGIS (Yes continues), then a file window opens - select the GeoTIFF exported from QGIS (right-click aerial layer > Export > Save As > GeoTIFF, CRS EPSG:2157, resolution 0.5, Create VRT OFF). The window may appear behind Revit - check the taskbar. The start folder is just where the window opens. The Revit image is found by the tif file name. Create = False is a dry run.",
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [
+          "0c13bc933c34480a84b181fd25cb0073",
+          "c18139ce079d436b9f4cd41dcad54722"
+        ],
+        "HasNestedGroups": false,
+        "Left": -10.0,
+        "Top": -176.0,
+        "Width": 319.0,
+        "Height": 758.0,
+        "FontSize": 30.0,
+        "GroupStyleId": "07655dc1-2d65-4fed-8d6a-37235d3e3a8d",
+        "InitialTop": 0.0,
+        "InitialHeight": 255.0,
+        "TextblockHeight": 166.0,
+        "Background": "#FFA4E1FF"
+      },
+      {
+        "Id": "9285fcdc3bf9499f9896a8acd4f6d408",
+        "Title": "2 PLACE IMAGE",
+        "DescriptionText": "NOTE: Open the Site plan view first. If the .tif is not already in the view the graph inserts it for you (or select an existing image to move that one). Needs Revit shared coordinates set to ITM (EPSG:2157). Sets image width/height in metres and moves its TOP-LEFT corner to the file's E/N. Units: metres.",
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [
+          "5511b80f52734868b69327d514747f18"
+        ],
+        "HasNestedGroups": false,
+        "Left": 490.0,
+        "Top": 2.0,
+        "Width": 377.0,
+        "Height": 278.0,
+        "FontSize": 30.0,
+        "GroupStyleId": "07655dc1-2d65-4fed-8d6a-37235d3e3a8d",
+        "InitialTop": 120.0,
+        "InitialHeight": 145.0,
+        "TextblockHeight": 108.0,
+        "Background": "#FFFFC999"
+      },
+      {
+        "Id": "5778abd77ce74ab5967807d4da6143b9",
+        "Title": "3 RESULT",
+        "DescriptionText": "Shows source, target E/N, size and the E/N of the top-left corner after placement - compare with the file values.",
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [
+          "4546c5d2c53a4fab9f400bdce31e6313"
+        ],
+        "HasNestedGroups": false,
+        "Left": 890.0,
+        "Top": 45.0,
+        "Width": 517.0,
+        "Height": 287.0,
+        "FontSize": 30.0,
+        "GroupStyleId": "07655dc1-2d65-4fed-8d6a-37235d3e3a8d",
+        "InitialTop": 120.0,
+        "InitialHeight": 145.0,
+        "TextblockHeight": 65.0,
+        "Background": "#FFB9F9E1"
+      }
+    ],
+    "X": 100.0,
+    "Y": 50.0,
+    "Zoom": 0.8
+  }
+}

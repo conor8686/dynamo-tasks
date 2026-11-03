@@ -1,0 +1,171 @@
+{
+  "Uuid": "0a9c8868-3b71-465e-863e-a533b27f0dd3",
+  "IsCustomNode": false,
+  "Description": "",
+  "Name": "4.0 Export_Sheets_to_DWG",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "import clr\nclr.AddReference('RevitAPI')\nclr.AddReference('RevitServices')\nclr.AddReference('System.Windows.Forms')\nclr.AddReference('System.Drawing')\n\nimport os\nimport Autodesk.Revit.DB as DB\nfrom RevitServices.Persistence import DocumentManager\nfrom System.Collections.Generic import List\nfrom System.Windows.Forms import Form, CheckedListBox, Button, FormStartPosition, DockStyle, DialogResult, FolderBrowserDialog, FlowLayoutPanel\n\ndoc = DocumentManager.Instance.CurrentDBDocument\n\nall_sheets = list(DB.FilteredElementCollector(doc).OfClass(DB.ViewSheet).ToElements())\nall_sheets.sort(key=lambda s: s.SheetNumber)\nlabels = [\"%s - %s\" % (s.SheetNumber, s.Name) for s in all_sheets]\n\n# --- Window 1: pick sheets ---\nsheet_form = Form()\nsheet_form.Text = \"Select sheets to export to DWG\"\nsheet_form.Width = 480\nsheet_form.Height = 560\nsheet_form.StartPosition = FormStartPosition.CenterScreen\nsheet_form.TopMost = True\n\nclb = CheckedListBox()\nclb.Dock = DockStyle.Top\nclb.Height = 420\nclb.CheckOnClick = True\nfor lbl in labels:\n    clb.Items.Add(lbl)\nsheet_form.Controls.Add(clb)\n\n# DialogResult on the button closes the form without needing a Python\n# event-handler delegate (Dynamo's CPython3/pythonnet engine cannot build\n# one at runtime - it throws \"Constructor on type 'TypeBuilder' not found\").\nnext_btn = Button()\nnext_btn.Text = \"Next: Choose Save Folder\"\nnext_btn.Dock = DockStyle.Bottom\nnext_btn.Height = 40\nnext_btn.DialogResult = DialogResult.OK\nsheet_form.Controls.Add(next_btn)\nsheet_form.AcceptButton = next_btn\n\n# Native dialog results avoid Python event delegates in CPython3/pythonnet.\n# Bulk actions return to this loop and redisplay the same form and checklist.\nselection_buttons = FlowLayoutPanel()\nselection_buttons.Dock = DockStyle.Bottom\nselection_buttons.Height = 36\n\nuncheck_btn = Button()\nuncheck_btn.Text = \"Uncheck All\"\nuncheck_btn.Width = 110\nuncheck_btn.DialogResult = DialogResult.Retry\nselection_buttons.Controls.Add(uncheck_btn)\n\ncheck_btn = Button()\ncheck_btn.Text = \"Check All\"\ncheck_btn.Width = 110\ncheck_btn.DialogResult = DialogResult.Ignore\nselection_buttons.Controls.Add(check_btn)\n\ncancel_btn = Button()\ncancel_btn.Text = \"Cancel\"\ncancel_btn.Width = 110\ncancel_btn.DialogResult = DialogResult.Cancel\nselection_buttons.Controls.Add(cancel_btn)\nsheet_form.Controls.Add(selection_buttons)\nsheet_form.CancelButton = cancel_btn\n\nwhile True:\n    sheet_form.DialogResult = getattr(DialogResult, \"None\")\n    sheet_dialog_result = sheet_form.ShowDialog()\n    if sheet_dialog_result == DialogResult.Retry or sheet_dialog_result == DialogResult.Ignore:\n        checked = sheet_dialog_result == DialogResult.Ignore\n        clb.BeginUpdate()\n        try:\n            for i in range(clb.Items.Count):\n                clb.SetItemChecked(i, checked)\n        finally:\n            clb.EndUpdate()\n    else:\n        break\n\nresults = []\nif sheet_dialog_result != DialogResult.OK:\n    results = [\"Cancelled - no sheets exported\"]\nelse:\n    chosen_sheets = [all_sheets[i] for i in list(clb.CheckedIndices)]\n\n    if len(chosen_sheets) == 0:\n        results = [\"No sheets checked - nothing exported\"]\n    else:\n        # --- Window 2: pick save folder ---\n        folder_dialog = FolderBrowserDialog()\n        folder_dialog.Description = \"Choose folder to save the DWG files\"\n        folder_dialog.ShowNewFolderButton = True\n\n        folder_dialog_result = folder_dialog.ShowDialog()\n        folder = folder_dialog.SelectedPath\n\n        # FolderBrowserDialog can return DialogResult.OK with an empty\n        # SelectedPath if OK is clicked without ever highlighting a folder\n        # node in the tree - guard against that and against a folder that\n        # no longer exists (create it) before handing the path to Export.\n        folder_ok = False\n        if folder_dialog_result != DialogResult.OK or not folder:\n            results = [\"Cancelled - no folder chosen, no sheets exported\"]\n        elif os.path.isdir(folder):\n            folder_ok = True\n        else:\n            try:\n                os.makedirs(folder)\n                folder_ok = True\n            except Exception as e:\n                results = [\"Could not use folder '%s': %s\" % (folder, e)]\n\n        if folder_ok:\n            opts = DB.DWGExportOptions()\n            opts.TargetUnit = DB.ExportUnit.Millimeter\n            opts.SharedCoords = False\n            opts.MergedViews = True\n            opts.FileVersion = DB.ACADVersion.Default\n\n            invalid_chars = '\\\\/:*?\"<>|'\n\n            for s in chosen_sheets:\n                ids = List[DB.ElementId]([s.Id])\n                safe_name = \"\".join(c for c in s.Name if c not in invalid_chars)\n                fname = \"%s - %s\" % (s.SheetNumber, safe_name)\n                ok = doc.Export(folder, fname, ids, opts)\n                results.append(\"%s -> %s\" % (fname, ok))\n\nOUT = results",
+      "Engine": "CPython3",
+      "EngineName": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "62eed8746e0b4b129fae1645eee7146b",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "e7016a78bcd04f18ba8f29d0437c0092",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "WatchWidth": 200.0,
+      "WatchHeight": 200.0,
+      "Id": "65b105bfc77c41f7aeff299b3d96068e",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "d5e31d91f07d4bed8e796a5746a89d35",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "02a99907a59043e4b5de26aabfd53b27",
+          "Name": "",
+          "Description": "Node output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualizes a node's output"
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "e7016a78bcd04f18ba8f29d0437c0092",
+      "End": "d5e31d91f07d4bed8e796a5746a89d35",
+      "Id": "e46d57afc31145ef8db02980644bb8ba",
+      "IsHidden": "False"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [],
+  "Thumbnail": "",
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [
+    {
+      "ExtensionGuid": "28992e1d-abb9-417f-8b1b-05e053bee670",
+      "Name": "Properties",
+      "Version": "2.19",
+      "Data": {}
+    },
+    {
+      "ExtensionGuid": "DFBD9CC0-DB40-457A-939E-8C8555555A9D",
+      "Name": "Generative Design",
+      "Version": "6.1",
+      "Data": {}
+    }
+  ],
+  "Author": "",
+  "Linting": {
+    "activeLinter": "None",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": true,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "2.19.3.6394",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "_Background Preview",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "ConnectorPins": [],
+    "NodeViews": [
+      {
+        "Id": "62eed8746e0b4b129fae1645eee7146b",
+        "Name": "Select & Export Sheets to DWG",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 160.0,
+        "Y": 242.0
+      },
+      {
+        "Id": "65b105bfc77c41f7aeff299b3d96068e",
+        "Name": "Watch",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 740.0,
+        "Y": 160.0
+      }
+    ],
+    "Annotations": [
+      {
+        "Id": "7de92eb556414c4c9a4382e75c0ae01e",
+        "Title": "By Conor McEnery - 2026-08-14\nJust Run, Select the Sheet, then select folder. all view are bind in the one DWG file and are in model/page Space. ",
+        "DescriptionText": null,
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [],
+        "HasNestedGroups": false,
+        "Left": 111.30986242021282,
+        "Top": 404.11257341892917,
+        "Width": 0.0,
+        "Height": 0.0,
+        "FontSize": 36.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": 0.0,
+        "InitialHeight": 0.0,
+        "TextblockHeight": 0.0,
+        "Background": "#FFC1D676"
+      }
+    ],
+    "X": 32.729509827514562,
+    "Y": 45.684335303623868,
+    "Zoom": 0.937432296686001
+  }
+}

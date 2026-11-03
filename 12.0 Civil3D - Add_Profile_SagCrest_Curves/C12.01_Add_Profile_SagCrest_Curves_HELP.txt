@@ -1,0 +1,104 @@
+CIVIL 3D DYNAMO – ADD PROFILE SAG / CREST CURVES
+Conor McEnery - 16/09/2026
+HELP / USER GUIDE
+
+Dynamo file:
+C12.01_Add_Profile_SagCrest_Curves_TABLE_MANUAL_v7.dyn
+
+PURPOSE
+This Dynamo graph adds Sag and Crest vertical curves to a selected Civil 3D Profile.
+Select the actual profile line in the Profile View — you do not need to select the Profile View frame.
+
+HOW TO USE
+1. Open the drawing in Civil 3D.
+2. Open Dynamo for Civil 3D.
+3. Open the Dynamo graph.
+4. Choose the required profile element / duct / cable from the dropdown table.
+5. Choose whether to use the table radius or your own manual radius.
+6. Run the graph.
+7. When prompted, select the actual design Profile line in the Profile View.
+8. Confirm the OUT results in Dynamo and check the Profile Entities in Civil 3D.
+
+RADIUS OPTIONS
+
+Use Manual Radius = FALSE
+- The script uses the Curve Radius from the built-in dropdown/table.
+- Select the required duct/cable/profile element.
+- The output reports:
+  RADIUS SOURCE: TABLE
+
+Use Manual Radius = TRUE
+- The table radius is ignored.
+- Enter your own Manual Curve Radius R in metres.
+- Example:
+  Use Manual Radius = True
+  Manual Curve Radius = 3.2
+  Result: R = 3.200 m
+- The output reports:
+  RADIUS SOURCE: MANUAL
+
+IMPORTANT
+- Manual radius values are entered in metres.
+- A manual value must be greater than zero.
+- Table entries marked NOT SET do not have a usable table radius.
+- If a NOT SET item is required, use Manual Radius = TRUE and enter the required radius.
+- The script works on Autodesk Civil 3D Profile objects.
+- Select the coloured/design profile line itself.
+
+WHAT THE SCRIPT DOES
+- Reads the selected Civil 3D Profile.
+- Reads the profile PVIs and adjacent profile entities.
+- Determines whether each applicable grade change is a SAG or CREST.
+- Uses the selected table radius or manual radius.
+- Adds a symmetric parabolic vertical curve between the adjacent profile entities.
+- Reports added, skipped and failed curves in Dynamo OUT.
+
+OUTPUT EXAMPLES
+
+Successful:
+'MWP-Road Design Offset' sta 10.773: CREST curve added, R=3.500 m
+
+Summary:
+'MWP-Road Design Offset': 6 curve(s) added, 0 skipped, 0 failed
+TOTAL: 6 curve(s) added, 0 skipped, 0 failed
+
+TROUBLESHOOTING
+
+"No valid Civil 3D Profiles were found"
+Select the actual profile line, not the Profile View grid/frame, labels, bands or other objects.
+
+"API type is Autodesk.Civil.DatabaseServices.Profile"
+This is the correct object type for the intended workflow.
+
+"NOT SET"
+The selected table item has no radius assigned. Set Manual Radius to TRUE and enter a radius.
+
+"could not add SAG/CREST curve"
+Check that:
+- the profile is editable/layout geometry;
+- there are valid tangent/profile entities before and after the PVI;
+- the radius is valid for the available geometry;
+- an existing vertical curve is not already occupying the location.
+
+SAFETY / GOOD PRACTICE
+- Save the Civil 3D drawing before running the graph.
+- Test on a copy of the drawing first.
+- Review all generated vertical curves in Profile Layout Tools / Profile Entities.
+- Confirm that the selected radii comply with the applicable project design requirements.
+
+QUICK REFERENCE
+TABLE MODE:
+Manual Radius = FALSE
+→ Select dropdown item
+→ Radius comes from table
+
+MANUAL MODE:
+Manual Radius = TRUE
+→ Enter R in metres
+→ Manual value overrides table
+
+SELECTION:
+Click the actual Civil 3D Profile line.
+
+VERSION
+Help prepared for TABLE + MANUAL v7.

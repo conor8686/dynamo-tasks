@@ -1,0 +1,480 @@
+{
+  "Uuid": "1ccb9225-8fe7-4968-966b-f04e65103f8d",
+  "IsCustomNode": false,
+  "Description": "Places Revit sections perpendicular to a connected chain of model lines/arcs at a set spacing (m). Select the curves, set Spacing and Create=True, Run.",
+  "Name": "Sections_Along_Path_V1",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [
+    {
+      "Id": "f5b916f9c33f4498bb5977d2e5cdec2c",
+      "Name": "Spacing (m)",
+      "Type": "number",
+      "Type2": "number",
+      "Value": "5",
+      "NumberType": "Double",
+      "Description": "Creates a number",
+      "SelectedIndex": 0
+    },
+    {
+      "Id": "3cee252191eb4e59a86fa1b7c6b19059",
+      "Name": "Section width (m)",
+      "Type": "number",
+      "Type2": "number",
+      "Value": "6",
+      "NumberType": "Double",
+      "Description": "Creates a number",
+      "SelectedIndex": 0
+    },
+    {
+      "Id": "ff9036e444324a7691888427df1f73fc",
+      "Name": "Half height up/down (m)",
+      "Type": "number",
+      "Type2": "number",
+      "Value": "3",
+      "NumberType": "Double",
+      "Description": "Creates a number",
+      "SelectedIndex": 0
+    },
+    {
+      "Id": "0de92982d55a4c16974b657c65ad2662",
+      "Name": "Section depth (m)",
+      "Type": "number",
+      "Type2": "number",
+      "Value": "1",
+      "NumberType": "Double",
+      "Description": "Creates a number",
+      "SelectedIndex": 0
+    },
+    {
+      "Id": "1c7513523ada4da28cad88b3332c0d86",
+      "Name": "Create sections",
+      "Type": "boolean",
+      "Type2": "boolean",
+      "Value": "true",
+      "Description": "Enables selection between True and False",
+      "SelectedIndex": 0
+    }
+  ],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "Dynamo.Nodes.DSModelElementsSelection, DSRevitNodesUI",
+      "NodeType": "ExtensionNode",
+      "InstanceId": [
+        "663f263a-15ef-40e9-ba38-da5080a47f4b-006c7158",
+        "663f263a-15ef-40e9-ba38-da5080a47f4b-006c71b6",
+        "663f263a-15ef-40e9-ba38-da5080a47f4b-006c7211",
+        "663f263a-15ef-40e9-ba38-da5080a47f4b-006c7269"
+      ],
+      "Id": "3f3ef4c30d874c74afa8881b5a735a38",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "797509e95f4c41b286b94f281d0bd227",
+          "Name": "Elements",
+          "Description": "The selected elements.",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Select multiple elements from the Revit document."
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.DoubleInput, CoreNodeModels",
+      "NumberType": "Double",
+      "Id": "f5b916f9c33f4498bb5977d2e5cdec2c",
+      "NodeType": "NumberInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "852e98a03b134580a9842e345c68c153",
+          "Name": "",
+          "Description": "Double",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a number",
+      "InputValue": 5.0
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.DoubleInput, CoreNodeModels",
+      "NumberType": "Double",
+      "Id": "3cee252191eb4e59a86fa1b7c6b19059",
+      "NodeType": "NumberInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "054bf44cce374b58b90a9c03efa2fb52",
+          "Name": "",
+          "Description": "Double",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a number",
+      "InputValue": 6.0
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.DoubleInput, CoreNodeModels",
+      "NumberType": "Double",
+      "Id": "ff9036e444324a7691888427df1f73fc",
+      "NodeType": "NumberInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "12d1cd7396204ead8509d5a36e5a5f2a",
+          "Name": "",
+          "Description": "Double",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a number",
+      "InputValue": 3.0
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.DoubleInput, CoreNodeModels",
+      "NumberType": "Double",
+      "Id": "0de92982d55a4c16974b657c65ad2662",
+      "NodeType": "NumberInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "9727319907014454886fcf0529fb7c6a",
+          "Name": "",
+          "Description": "Double",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a number",
+      "InputValue": 1.0
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.BoolSelector, CoreNodeModels",
+      "Id": "1c7513523ada4da28cad88b3332c0d86",
+      "NodeType": "BooleanInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "de284d8f511e4cdcb3f0c5116baf21e3",
+          "Name": "",
+          "Description": "Boolean",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Enables selection between True and False",
+      "InputValue": true
+    },
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "\"\"\"Revit Dynamo CPython3. IN: curves (model lines/arcs, one connected path), spacing m, width m, half height m, section depth m, create.\"\"\"\nimport clr\nclr.AddReference('RevitAPI')\nclr.AddReference('RevitServices')\nclr.AddReference('RevitNodes')\nimport Revit\nclr.ImportExtensions(Revit.Elements)\nfrom Autodesk.Revit.DB import *\nfrom RevitServices.Persistence import DocumentManager\nfrom RevitServices.Transactions import TransactionManager\n\nM = 1.0 / 0.3048  # metres -> feet\n\ndef raw(e):\n    return e.InternalElement if hasattr(e, 'InternalElement') else e\n\ndef run():\n    items = IN[0] if isinstance(IN[0], list) else [IN[0]]\n    spacing, width, half_h, depth, create = IN[1], IN[2], IN[3], IN[4], IN[5]\n    if not create:\n        return 'READY - set Create to True and Run'\n    doc = DocumentManager.Instance.CurrentDBDocument\n    curves = [raw(e).GeometryCurve for e in items]\n    # order the curves end-to-start into one chain\n    tol = 0.01\n    def same(a, b):\n        return a.DistanceTo(b) < tol\n    chain = [curves.pop(0)]\n    while curves:\n        hit = False\n        for c in list(curves):\n            if same(chain[-1].GetEndPoint(1), c.GetEndPoint(0)):\n                chain.append(c); curves.remove(c); hit = True; break\n            if same(chain[-1].GetEndPoint(1), c.GetEndPoint(1)):\n                chain.append(c.CreateReversed()); curves.remove(c); hit = True; break\n            if same(chain[0].GetEndPoint(0), c.GetEndPoint(1)):\n                chain.insert(0, c); curves.remove(c); hit = True; break\n            if same(chain[0].GetEndPoint(0), c.GetEndPoint(0)):\n                chain.insert(0, c.CreateReversed()); curves.remove(c); hit = True; break\n        if not hit:\n            return 'ERROR - curves are not one connected path'\n    lens = [c.Length for c in chain]\n    total = sum(lens)\n    step = spacing * M\n    stations = []\n    s = 0.0\n    while s < total - 1e-6:\n        stations.append(s)\n        s += step\n    stations.append(total)\n    vft = [v for v in FilteredElementCollector(doc).OfClass(ViewFamilyType) if v.ViewFamily == ViewFamily.Section][0]\n    existing = set(v.Name for v in FilteredElementCollector(doc).OfClass(View))\n    made = []\n    TransactionManager.Instance.EnsureInTransaction(doc)\n    for st in stations:\n        acc = 0.0\n        u = 1.0\n        c = chain[-1]\n        for cc, l in zip(chain, lens):\n            if st <= acc + l + 1e-9:\n                c = cc\n                u = min(max((st - acc) / l, 0.0), 1.0)\n                break\n            acc += l\n        d = c.ComputeDerivatives(u, True)\n        tg = XYZ(d.BasisX.X, d.BasisX.Y, 0).Normalize()\n        tr = Transform.Identity\n        tr.Origin = d.Origin\n        tr.BasisZ = tg.Negate()\n        tr.BasisY = XYZ.BasisZ\n        tr.BasisX = XYZ.BasisZ.CrossProduct(tg.Negate())\n        bb = BoundingBoxXYZ()\n        bb.Transform = tr\n        bb.Min = XYZ(-width * M / 2.0, -half_h * M, 0)\n        bb.Max = XYZ(width * M / 2.0, half_h * M, depth * M)\n        v = ViewSection.CreateSection(doc, vft.Id, bb)\n        nm = 'PATH SEC %05.1f m' % (st / M)\n        while nm in existing:\n            nm += ' (2)'\n        v.Name = nm\n        existing.add(nm)\n        made.append(nm)\n    TransactionManager.Instance.TransactionTaskDone()\n    return made\n\nOUT = run()\n",
+      "Engine": "CPython3",
+      "EngineName": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "3faad5c83d5149c4847f96daa4a0bd9f",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [
+        {
+          "Id": "945b7bd01b6b44b4a976b810345b0e0e",
+          "Name": "Curves",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "1e3a8d6f203c445b94b17f27f08c36c5",
+          "Name": "Spacing_m",
+          "Description": "Input #1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "dcbba328e14648bea9659b2e1648592e",
+          "Name": "Width_m",
+          "Description": "Input #2",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "7ea0372907d64022ad6e061b028ec178",
+          "Name": "HalfHeight_m",
+          "Description": "Input #3",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "70c77bc129014654baa3ad4fd37915ab",
+          "Name": "Depth_m",
+          "Description": "Input #4",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "00c62b58d6b2422dbe44c367d05dc9c8",
+          "Name": "Create",
+          "Description": "Input #5",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "70eecfa7485e42bbb1bb4775821e0ac0",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "WatchWidth": 275.0,
+      "WatchHeight": 38.0,
+      "Id": "463378e99c0c4cc5876e59e8fa8d8fb0",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "743278509a8e455eb309208b18807990",
+          "Name": "",
+          "Description": "Input",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "65cdfbe3659d4a7890002f80534256a1",
+          "Name": "",
+          "Description": "Output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualizes a node's output"
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "797509e95f4c41b286b94f281d0bd227",
+      "End": "945b7bd01b6b44b4a976b810345b0e0e",
+      "Id": "b400483a5aed479d93a383420d5ffc2c",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "852e98a03b134580a9842e345c68c153",
+      "End": "1e3a8d6f203c445b94b17f27f08c36c5",
+      "Id": "8e2578360ed342d9b810657a4bf950f9",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "054bf44cce374b58b90a9c03efa2fb52",
+      "End": "dcbba328e14648bea9659b2e1648592e",
+      "Id": "600c0001343d405e83ccae3f6681528e",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "12d1cd7396204ead8509d5a36e5a5f2a",
+      "End": "7ea0372907d64022ad6e061b028ec178",
+      "Id": "118d726c4b0b401a8c8aa557f78d6740",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "9727319907014454886fcf0529fb7c6a",
+      "End": "70c77bc129014654baa3ad4fd37915ab",
+      "Id": "9a7cf167bbc541d494473cc1b4708386",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "de284d8f511e4cdcb3f0c5116baf21e3",
+      "End": "00c62b58d6b2422dbe44c367d05dc9c8",
+      "Id": "b84d049d82ef45088d644db3162e9be8",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "70eecfa7485e42bbb1bb4775821e0ac0",
+      "End": "743278509a8e455eb309208b18807990",
+      "Id": "9bd6ef569c5b498fad084bf44f30e86b",
+      "IsHidden": "False"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [],
+  "Thumbnail": "",
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [
+    {
+      "ExtensionGuid": "28992e1d-abb9-417f-8b1b-05e053bee670",
+      "Name": "Properties",
+      "Version": "2.19",
+      "Data": {}
+    },
+    {
+      "ExtensionGuid": "DFBD9CC0-DB40-457A-939E-8C8555555A9D",
+      "Name": "Generative Design",
+      "Version": "6.1",
+      "Data": {}
+    }
+  ],
+  "Author": "",
+  "Linting": {
+    "activeLinter": "None",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": true,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "2.19.3.6394",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "_Background Preview",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "ConnectorPins": [],
+    "NodeViews": [
+      {
+        "Id": "3f3ef4c30d874c74afa8881b5a735a38",
+        "Name": "Select path curves",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 80.0,
+        "Y": 36.0
+      },
+      {
+        "Id": "f5b916f9c33f4498bb5977d2e5cdec2c",
+        "Name": "Spacing (m)",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -5.349790593668672,
+        "Y": 232.61318057057684
+      },
+      {
+        "Id": "3cee252191eb4e59a86fa1b7c6b19059",
+        "Name": "Section width (m)",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -2.6748952968343929,
+        "Y": 372.73661002309188
+      },
+      {
+        "Id": "ff9036e444324a7691888427df1f73fc",
+        "Name": "Half height up/down (m)",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -23.65179792827837,
+        "Y": 493.56910144682877
+      },
+      {
+        "Id": "0de92982d55a4c16974b657c65ad2662",
+        "Name": "Section depth (m)",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -21.16213498845957,
+        "Y": 618.46573084501642
+      },
+      {
+        "Id": "1c7513523ada4da28cad88b3332c0d86",
+        "Name": "Create sections",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -12.448314699093885,
+        "Y": 758.09359667849276
+      },
+      {
+        "Id": "3faad5c83d5149c4847f96daa4a0bd9f",
+        "Name": "Sections along path",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 450.0,
+        "Y": 250.0
+      },
+      {
+        "Id": "463378e99c0c4cc5876e59e8fa8d8fb0",
+        "Name": "Watch",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 800.0,
+        "Y": 250.0
+      }
+    ],
+    "Annotations": [],
+    "X": 328.76542432346406,
+    "Y": -147.48046856488088,
+    "Zoom": 0.74769281712332558
+  }
+}

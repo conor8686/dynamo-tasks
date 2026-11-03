@@ -1,0 +1,284 @@
+{
+  "Uuid": "ac0c2432-136d-4aba-84ef-e6cb0115aee0",
+  "IsCustomNode": false,
+  "Description": "HELP - EXPORT SELECTED SHEETS TO PDF\n\n1. Click RUN.\n2. Select the Revit sheets you want to export.\n3. Click Continue.\n4. Choose the folder where the PDF files will be saved.\n5. The selected sheets will export automatically.\n\nIf you cancel the sheet selection or folder selection, no PDFs will be exported.",
+  "Name": "Export_Sheets_to_PDF",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "CoreNodeModels.Input.StringInput, CoreNodeModels",
+      "Id": "9ed853994b154c1cb7a91c7b1a2997b6",
+      "NodeType": "StringInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "70eee7c160d54b329c6c014d9c3ecc1f",
+          "Name": "",
+          "Description": "String",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a string",
+      "InputValue": "{SheetNumber}_{SheetName}_{Revision}"
+    },
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "import clr\nclr.AddReference('RevitAPI')\nclr.AddReference('RevitServices')\nclr.AddReference('System.Windows.Forms')\n\nfrom Autodesk.Revit.DB import *\nfrom RevitServices.Persistence import DocumentManager\nfrom System.Collections.Generic import List\nimport System.Windows.Forms as WinForms\nimport re\n\ndoc = DocumentManager.Instance.CurrentDBDocument\n\nexport_folder = None\nname_pattern  = IN[1]      # e.g. \"{SheetNumber}_{SheetName}_{Revision}\"\n\nimport System\n\ndef sanitize(text):\n    return re.sub(r'[\\\\/:*?\"<>|]', '-', text)\n\ndef clean_separators(text):\n    # collapse runs of separator-like characters (space, underscore, hyphen)\n    # left behind by empty tokens (e.g. blank Revision) into a single one\n    text = re.sub(r'[ _\\\\-]{2,}', lambda m: m.group(0)[0], text)\n    # trim leading/trailing separators\n    return text.strip(' _-')\n\n# Sheets to export come from IN[2] (output of the sheet-selection node)\nsheets = IN[2]\n\nresults = []\nerrors = []\n\n# Ask for destination only after sheets have been selected.\nif sheets:\n    folder_dialog = WinForms.FolderBrowserDialog()\n    folder_dialog.Description = \"Select folder to save exported PDF sheets\"\n    folder_dialog.ShowNewFolderButton = True\n    folder_result = folder_dialog.ShowDialog()\n    if folder_result == WinForms.DialogResult.OK and folder_dialog.SelectedPath:\n        export_folder = folder_dialog.SelectedPath\n        if not System.IO.Directory.Exists(export_folder):\n            System.IO.Directory.CreateDirectory(export_folder)\n    else:\n        errors.append(\"Export cancelled - no save folder selected.\")\n\nif not sheets:\n    errors.append(\"No sheets selected (dialog cancelled or nothing checked).\")\nelif not export_folder:\n    pass\nelse:\n    options = PDFExportOptions()\n    options.Combine = True  # required so FileName is actually used per sheet\n\n    for sheet in sheets:\n        try:\n            # Dynamo may wrap ViewSheet objects when passing between Python nodes.\n            # Convert the selected item back to the native Autodesk.Revit.DB.ViewSheet.\n            native_sheet = sheet\n            try:\n                native_sheet = UnwrapElement(sheet)\n            except:\n                pass\n\n            # Extra fallback for wrappers that UnwrapElement does not resolve.\n            if not isinstance(native_sheet, ViewSheet):\n                try:\n                    sid = sheet.Id\n                    if isinstance(sid, ElementId):\n                        native_sheet = doc.GetElement(sid)\n                    else:\n                        native_sheet = doc.GetElement(ElementId(int(sid)))\n                except:\n                    native_sheet = None\n\n            if native_sheet is None or not isinstance(native_sheet, ViewSheet):\n                raise Exception(\"Selected sheet could not be converted to a native Revit ViewSheet\")\n\n            number = native_sheet.SheetNumber\n            name = native_sheet.Name\n            rev_param = native_sheet.get_Parameter(BuiltInParameter.SHEET_CURRENT_REVISION)\n            revision = rev_param.AsString() if rev_param else \"\"\n            revision = revision or \"\"\n\n            filename = name_pattern\n            filename = filename.replace(\"{SheetNumber}\", number)\n            filename = filename.replace(\"{SheetName}\", name)\n            filename = filename.replace(\"{Revision}\", revision)\n            filename = clean_separators(filename)\n            filename = sanitize(filename)\n\n            options.FileName = filename\n            view_ids = List[ElementId]()\n            view_ids.Add(native_sheet.Id)\n\n            doc.Export(export_folder, view_ids, options)\n            results.append(filename + \".pdf\")\n        except Exception as e:\n            errors.append(\"{0}: {1}\".format(getattr(sheet, \"SheetNumber\", \"Sheet\"), str(e)))\n\nOUT = results, errors\n",
+      "Engine": "CPython3",
+      "EngineName": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "38993d0893fe444bb7e9f13e13668bcb",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [
+        {
+          "Id": "25473174d5a941549c04a9e232930f52",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "728623656ed843f599d8e2ae83b0ec64",
+          "Name": "IN[1]",
+          "Description": "Input #1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "2e24d2e03b27431ba532846d8301a99a",
+          "Name": "IN[2]",
+          "Description": "Input #2",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "6aa2ba6fedef4539a80845d734c026ad",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "WatchWidth": 200.0,
+      "WatchHeight": 200.0,
+      "Id": "77bdf06dca5b431ebd5be1184cc96849",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "325a91101b7d4045bd78266adc1896ac",
+          "Name": "",
+          "Description": "Node to evaluate.",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "45314d9cdb594a78a29eb648149633f0",
+          "Name": "",
+          "Description": "Watch contents.",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualizes a node's output"
+    },
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "import clr\nclr.AddReference('RevitAPI')\nclr.AddReference('RevitServices')\nclr.AddReference('System.Windows.Forms')\nclr.AddReference('System.Drawing')\n\nfrom Autodesk.Revit.DB import *\nfrom RevitServices.Persistence import DocumentManager\nimport System.Windows.Forms as WinForms\n\ndoc = DocumentManager.Instance.CurrentDBDocument\n\ncollector = FilteredElementCollector(doc).OfClass(ViewSheet)\nsheets = sorted([s for s in collector if not s.IsPlaceholder], key=lambda s: s.SheetNumber)\n\nform = WinForms.Form()\nform.Text = \"Select Sheets to Export\"\nform.Width = 560\nform.Height = 640\nform.StartPosition = WinForms.FormStartPosition.CenterScreen\nform.TopMost = True\n\nlabel = WinForms.Label()\nlabel.Text = \"Tick the sheets to export, then click Continue.\"\nlabel.Left = 10\nlabel.Top = 10\nlabel.Width = 510\nform.Controls.Add(label)\n\nchecklist = WinForms.CheckedListBox()\nchecklist.Left = 10\nchecklist.Top = 35\nchecklist.Width = 520\nchecklist.Height = 500\nchecklist.CheckOnClick = True\nfor s in sheets:\n    checklist.Items.Add(\"{0} - {1}\".format(s.SheetNumber, s.Name), True)\nform.Controls.Add(checklist)\n\nbtn_ok = WinForms.Button()\nbtn_ok.Text = \"Continue\"\nbtn_ok.Left = 340\nbtn_ok.Top = 545\nbtn_ok.Width = 90\nbtn_ok.DialogResult = WinForms.DialogResult.OK\nform.Controls.Add(btn_ok)\n\nbtn_cancel = WinForms.Button()\nbtn_cancel.Text = \"Cancel\"\nbtn_cancel.Left = 440\nbtn_cancel.Top = 545\nbtn_cancel.Width = 90\nbtn_cancel.DialogResult = WinForms.DialogResult.Cancel\nform.Controls.Add(btn_cancel)\n\n# Native dialog results avoid Python click-handler delegates in CPython3.\nbtn_uncheck = WinForms.Button()\nbtn_uncheck.Text = \"Uncheck All\"\nbtn_uncheck.Left = 10\nbtn_uncheck.Top = 545\nbtn_uncheck.Width = 100\nbtn_uncheck.DialogResult = WinForms.DialogResult.Retry\nform.Controls.Add(btn_uncheck)\n\nbtn_check = WinForms.Button()\nbtn_check.Text = \"Check All\"\nbtn_check.Left = 120\nbtn_check.Top = 545\nbtn_check.Width = 100\nbtn_check.DialogResult = WinForms.DialogResult.Ignore\nform.Controls.Add(btn_check)\n\nform.AcceptButton = btn_ok\nform.CancelButton = btn_cancel\n# Redisplay the same form after bulk selection, retaining all sheet states.\nwhile True:\n    form.DialogResult = getattr(WinForms.DialogResult, \"None\")\n    result = form.ShowDialog()\n    if result == WinForms.DialogResult.Retry or result == WinForms.DialogResult.Ignore:\n        checked = result == WinForms.DialogResult.Ignore\n        checklist.BeginUpdate()\n        try:\n            for i in range(checklist.Items.Count):\n                checklist.SetItemChecked(i, checked)\n        finally:\n            checklist.EndUpdate()\n    else:\n        break\n\nselected_sheets = []\n\nif result == WinForms.DialogResult.OK:\n    for i in range(checklist.Items.Count):\n        if checklist.GetItemChecked(i):\n            selected_sheets.append(sheets[i])\n\nOUT = selected_sheets\n",
+      "Engine": "CPython3",
+      "EngineName": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "2d77d9149b1f4eacac7116e6171c1549",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "5ffeaab4fa784153b06157066885f8c7",
+          "Name": "Sheets",
+          "Description": "Selected sheets",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Notes.NoteModel, DynamoCore",
+      "NodeType": "ExtensionNode",
+      "Id": "c0a27c9b5aa140f4bb5845ba3db64eb3",
+      "Text": "HELP - EXPORT SELECTED SHEETS TO PDF\n\n1. Click RUN.\n2. Select the Revit sheets you want to export.\n3. Click Continue.\n4. Choose the folder where the PDF files will be saved.\n5. The selected sheets will export automatically.\n\nIf you cancel the sheet selection or folder selection, no PDFs will be exported.",
+      "X": 50.0,
+      "Y": 650.0,
+      "Width": 560.0,
+      "Height": 230.0,
+      "FontSize": 18.0
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "70eee7c160d54b329c6c014d9c3ecc1f",
+      "End": "728623656ed843f599d8e2ae83b0ec64",
+      "Id": "e9d2721501c44962b6b8929543dfe3c4",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "6aa2ba6fedef4539a80845d734c026ad",
+      "End": "325a91101b7d4045bd78266adc1896ac",
+      "Id": "d39b8007cf6a4269b56c0b7669799d47",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "5ffeaab4fa784153b06157066885f8c7",
+      "End": "2e24d2e03b27431ba532846d8301a99a",
+      "Id": "b9821029d6ad4faea2ee5bdc3db9a5d8",
+      "IsHidden": "False"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [],
+  "Thumbnail": null,
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [
+    {
+      "ExtensionGuid": "28992e1d-abb9-417f-8b1b-05e053bee670",
+      "Name": "Properties",
+      "Version": "2.19",
+      "Data": {}
+    },
+    {
+      "ExtensionGuid": "DFBD9CC0-DB40-457A-939E-8C8555555A9D",
+      "Name": "Generative Design",
+      "Version": "6.1",
+      "Data": {}
+    }
+  ],
+  "Author": "None provided",
+  "Linting": {
+    "activeLinter": "None",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": true,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "2.19.3.6394",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "_Background Preview",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "ConnectorPins": [],
+    "NodeViews": [
+      {
+        "Id": "6a512a9bdb44401ebcb9f9188c1c6f5d",
+        "Name": "Export Folder",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 50.0,
+        "Y": 50.0
+      },
+      {
+        "Id": "9ed853994b154c1cb7a91c7b1a2997b6",
+        "Name": "Filename Pattern",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 50.0,
+        "Y": 200.0
+      },
+      {
+        "Id": "38993d0893fe444bb7e9f13e13668bcb",
+        "Name": "Export Sheets to PDF",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 400.0,
+        "Y": 100.0
+      },
+      {
+        "Id": "77bdf06dca5b431ebd5be1184cc96849",
+        "Name": "Results / Errors",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 750.0,
+        "Y": 100.0
+      },
+      {
+        "Id": "2d77d9149b1f4eacac7116e6171c1549",
+        "Name": "Select Sheets",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 67.0,
+        "Y": 421.0
+      },
+      {
+        "Id": "c0a27c9b5aa140f4bb5845ba3db64eb3",
+        "Name": "HELP / INSTRUCTIONS",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": false,
+        "X": 50.0,
+        "Y": 650.0
+      }
+    ],
+    "Annotations": [],
+    "X": 0.0,
+    "Y": 0.0,
+    "Zoom": 1.0
+  }
+}

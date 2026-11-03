@@ -1,0 +1,55 @@
+C1.0 PolylineToAlignment - Help / Notes Version: V1.8_MAJOR7_MINOR1_SAFE
+
+Conor McEnery
+
+PURPOSE Creates a Civil 3D alignment from the selected polyline and
+applies the MWP alignment/chainage styles.
+
+ALIGNMENT STYLE Preferred style: MWP GRID ALIGNMENT
+
+If the required style is not available, the Dynamo workflow uses the
+safe style-handling method rather than relying on an arbitrary first
+style.
+
+MAJOR CHAINAGES Style: MWP - Perpendicular with Tick_SAFE
+
+Increment: 10.000 m
+
+Major tick: AeccTickLine Block Height: 7.00 mm Align with object: True
+
+Major label: Displays the Civil 3D Chainage Value as whole metres.
+Typical result: 10, 20, 30, 40, 50, 60…
+
+The chainage is a genuine Civil 3D label field so it updates with the
+alignment.
+
+MINOR CHAINAGES Style: MWP_Tick
+
+Increment: 1.000 m
+
+Minor tick: AeccTickLine Block Height: 1.00 mm Align with object: True
+
+Minor chainages use the tick only and do not display chainage text.
+
+EXPECTED RESULT Every 1 m: Small 1 mm tick.
+
+Every 10 m: Large 7 mm tick plus chainage number.
+
+IMPORTANT - CIVIL 3D STABILITY The SAFE version is intended to avoid
+creating an invalid Civil 3D label-style structure.
+
+Do not reuse the older generated label style if it caused Civil 3D to
+crash when selecting a label.
+
+The major style uses the safer clone/copy-and-modify approach so Civil
+3D retains a valid native style structure.
+
+If Civil 3D crashes when selecting a generated label: 1. Stop using that
+generated style. 2. Reopen the drawing if required. 3. Remove the
+problematic generated style where safe to do so. 4. Use the SAFE Dynamo
+version. 5. Send the Dynamo OUT result and a screenshot of the Alignment
+Labels dialog for troubleshooting.
+
+CURRENT SETTINGS SUMMARY Major interval: 10 m Major tick height: 7.00 mm
+Major text: whole-metre chainage Minor interval: 1 m Minor tick height:
+1.00 mm Minor text: none

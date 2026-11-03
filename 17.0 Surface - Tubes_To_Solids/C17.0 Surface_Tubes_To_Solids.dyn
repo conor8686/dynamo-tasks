@@ -1,0 +1,260 @@
+{
+  "Uuid": "4fcef371-650b-404d-90ff-f4cb1df654ea",
+  "IsCustomNode": false,
+  "Description": "Converts open-tube AutoCAD SURFACE objects (e.g. duct surfaces) into closed 3D solids. Needs Civil3DExecPlugin.dll NETLOADed. Set Run to True.",
+  "Name": "C17.0 Surface_Tubes_To_Solids",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [
+    {
+      "Id": "53b835c1a38047069344e90579d7c26b",
+      "Name": "Run",
+      "Type": "boolean",
+      "Type2": "boolean",
+      "Value": "true",
+      "Description": "Enables selection between True and False"
+    },
+    {
+      "Id": "b19b6749fde14a189248add5d58ff2f6",
+      "Name": "Layer contains",
+      "Type": "string",
+      "Type2": "string",
+      "Value": "Ele Duct",
+      "Description": "Creates a string."
+    },
+    {
+      "Id": "aa4a813c7567459786b73fb172c857ac",
+      "Name": "Erase source surfaces",
+      "Type": "boolean",
+      "Type2": "boolean",
+      "Value": "true",
+      "Description": "Enables selection between True and False"
+    }
+  ],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "\"\"\"Civil 3D Dynamo CPython3 - no AutoCAD API is loaded in Python (that crashed Civil 3D).\nThe geometry work runs as C# inside Civil 3D through the civil3d-exec plugin (NETLOAD Civil3DExecPlugin.dll, port 8081).\nIN[0] Run (bool) | IN[1] layer name contains (text) | IN[2] erase source surfaces (bool) | IN[3] port (optional, default 8081)\"\"\"\nimport json\nimport socket\n\nCSHARP = r'''\nstring filter = __FILTER__.ToLower();\nbool erase = __ERASE__;\nvar ms = (BlockTableRecord)Transaction.GetObject(SymbolUtilityServices.GetBlockModelSpaceId(Database), OpenMode.ForWrite);\nvar srfs = new List<Autodesk.AutoCAD.DatabaseServices.Surface>();\nforeach (ObjectId id in ms) { var o = Transaction.GetObject(id, OpenMode.ForRead) as Autodesk.AutoCAD.DatabaseServices.Surface; if (o != null && o.Layer.ToLower().Contains(filter)) srfs.Add(o); }\nvar res = new List<string>(); int made = 0;\nforeach (var srf in srfs) {\n  var ex = new Autodesk.AutoCAD.DatabaseServices.DBObjectCollection(); srf.Explode(ex);\n  bool lines = false; var ells = new List<Autodesk.AutoCAD.DatabaseServices.Ellipse>();\n  foreach (Autodesk.AutoCAD.DatabaseServices.DBObject d in ex) { if (d is Autodesk.AutoCAD.DatabaseServices.Line) lines = true; if (d is Autodesk.AutoCAD.DatabaseServices.Ellipse e) ells.Add(e); }\n  if (lines || ells.Count == 0) { res.Add(srf.Handle+\" skipped (ring face)\"); continue; }\n  var groups = new List<Autodesk.AutoCAD.DatabaseServices.DBObjectCollection>(); var centres = new List<Autodesk.AutoCAD.Geometry.Point3d>();\n  foreach (var e in ells) {\n    int gi = centres.FindIndex(c => c.DistanceTo(e.Center) <= e.MajorRadius*0.01);\n    if (gi < 0) { centres.Add(e.Center); groups.Add(new Autodesk.AutoCAD.DatabaseServices.DBObjectCollection()); gi = groups.Count-1; }\n    groups[gi].Add(e);\n  }\n  var ents = new List<Autodesk.AutoCAD.DatabaseServices.Entity>(); ents.Add((Autodesk.AutoCAD.DatabaseServices.Entity)srf.Clone());\n  foreach (var g in groups) foreach (Autodesk.AutoCAD.DatabaseServices.Region r in Autodesk.AutoCAD.DatabaseServices.Region.CreateFromCurves(g)) ents.Add(Autodesk.AutoCAD.DatabaseServices.Surface.CreateFrom(r));\n  if (groups.Count != 2 || ents.Count != 3) { res.Add(srf.Handle+\" skipped (rings=\"+groups.Count+\", pieces=\"+ents.Count+\")\"); continue; }\n  var sol = new Autodesk.AutoCAD.DatabaseServices.Solid3d();\n  try { sol.CreateSculptedSolid(ents.ToArray(), new Autodesk.AutoCAD.Geometry.IntegerCollection()); }\n  catch (System.Exception e) { res.Add(srf.Handle+\" failed \"+e.Message); continue; }\n  sol.Layer = srf.Layer; sol.Color = srf.Color;\n  ms.AppendEntity(sol); Transaction.AddNewlyCreatedDBObject(sol, true); made++;\n  res.Add(srf.Handle+\" -> \"+sol.Handle+\" vol \"+sol.MassProperties.Volume.ToString(\"F4\"));\n  if (erase) { srf.UpgradeOpen(); srf.Erase(); }\n}\nreturn new { surfacesFound = srfs.Count, made, erased = erase, res };\n'''\n\n\ndef send(code, port):\n    request = {'jsonrpc': '2.0', 'method': 'executeCode', 'id': 'dyn1',\n               'params': {'code': code, 'readOnly': False, 'description': 'Dynamo: surface tubes to solids'}}\n    sock = socket.create_connection(('127.0.0.1', port), timeout=10)\n    try:\n        sock.settimeout(120)\n        sock.sendall(json.dumps(request).encode('utf-8'))\n        buffer = b''\n        while True:\n            chunk = sock.recv(65536)\n            if not chunk:\n                raise ValueError('Plugin closed the connection before replying.')\n            buffer += chunk\n            try:\n                return json.loads(buffer.decode('utf-8'))\n            except ValueError:\n                continue\n    finally:\n        sock.close()\n\n\ndef run():\n    if not bool(IN[0]):\n        return ['READY', 'Set Run to True. Civil 3D must have Civil3DExecPlugin.dll loaded (NETLOAD).', None]\n    port = int(IN[3]) if len(IN) > 3 and IN[3] else 8081\n    code = CSHARP.replace('__FILTER__', json.dumps(str(IN[1]).strip())).replace('__ERASE__', 'true' if bool(IN[2]) else 'false')\n    try:\n        reply = send(code, port)\n    except (OSError, ValueError) as ex:\n        return ['ERROR', 'Cannot reach the civil3d-exec plugin on port %d (%s). In Civil 3D run NETLOAD on Civil3DExecPlugin.dll first.' % (port, ex), None]\n    if reply.get('error'):\n        return ['ERROR', str(reply['error'].get('message', reply['error'])), None]\n    result = reply.get('result')\n    return ['SUCCESS', json.dumps(result), result]\n\nOUT = run()\n",
+      "Engine": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "d10a1e35a38a46c7b571ca79893175f5",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [
+        {
+          "Id": "3d93bbed347f4748b0f883490529b3de",
+          "Name": "Run",
+          "Description": "Run",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "9ebeccc66c0f4e7dba2a99d66dfc5a58",
+          "Name": "Layer_contains",
+          "Description": "Layer_contains",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "0d1727554e9d4dafac9264ae5eab6226",
+          "Name": "Erase_sources",
+          "Description": "Erase_sources",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "4bf926f0dc514dec9eafd3693f9039f3",
+          "Name": "OUT",
+          "Description": "OUT",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.BoolSelector, CoreNodeModels",
+      "Id": "53b835c1a38047069344e90579d7c26b",
+      "NodeType": "BooleanInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "bb42094e35894b389647cc5eecc9f2a6",
+          "Name": "",
+          "Description": "",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Enables selection between True and False",
+      "InputValue": true
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.StringInput, CoreNodeModels",
+      "SerializedWidth": 0.0,
+      "SerializedHeight": 0.0,
+      "Id": "b19b6749fde14a189248add5d58ff2f6",
+      "NodeType": "StringInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "f6843e5c9de1417491e7ccca75b71d74",
+          "Name": "",
+          "Description": "",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a string.",
+      "InputValue": "Ele Duct"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.BoolSelector, CoreNodeModels",
+      "Id": "aa4a813c7567459786b73fb172c857ac",
+      "NodeType": "BooleanInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "3a39b463461d4b8c833b3a2761044456",
+          "Name": "",
+          "Description": "",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Enables selection between True and False",
+      "InputValue": true
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "bb42094e35894b389647cc5eecc9f2a6",
+      "End": "3d93bbed347f4748b0f883490529b3de",
+      "Id": "feb9e54cf30240508e0dc51351383539",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "f6843e5c9de1417491e7ccca75b71d74",
+      "End": "9ebeccc66c0f4e7dba2a99d66dfc5a58",
+      "Id": "7102339fea2344858719e1096d977db6",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "3a39b463461d4b8c833b3a2761044456",
+      "End": "0d1727554e9d4dafac9264ae5eab6226",
+      "Id": "2d8da264fa1f4937ba86823665274ead",
+      "IsHidden": "False"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [],
+  "EnableLegacyPolyCurveBehavior": true,
+  "Thumbnail": "",
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [
+    {
+      "ExtensionGuid": "28992e1d-abb9-417f-8b1b-05e053bee670",
+      "Name": "Properties",
+      "Version": "3.7",
+      "Data": {}
+    }
+  ],
+  "Author": "",
+  "Linting": {
+    "activeLinter": "None",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": true,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "3.7.0.11777",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "_Background Preview",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "ConnectorPins": [],
+    "NodeViews": [
+      {
+        "Id": "d10a1e35a38a46c7b571ca79893175f5",
+        "Name": "Surface tubes to solids",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 450.0,
+        "Y": 100.0
+      },
+      {
+        "Id": "53b835c1a38047069344e90579d7c26b",
+        "Name": "Run",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 100.0,
+        "Y": 100.0
+      },
+      {
+        "Id": "b19b6749fde14a189248add5d58ff2f6",
+        "Name": "Layer contains",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 120.0,
+        "Y": 295.0
+      },
+      {
+        "Id": "aa4a813c7567459786b73fb172c857ac",
+        "Name": "Erase source surfaces",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 100.0,
+        "Y": 439.0
+      }
+    ],
+    "Annotations": [],
+    "X": 130.6379549571489,
+    "Y": 32.79638926117673,
+    "Zoom": 0.6913477938671877
+  }
+}

@@ -1,0 +1,105 @@
+{
+  "Uuid": "a897215c-1e9c-4650-a6c5-6f6823f7e930",
+  "IsCustomNode": false,
+  "Description": "Selects two boundary polylines of a corridor (e.g. a cable route swath) in Civil 3D and draws the midpoint centerline back into the drawing on its own layer.",
+  "Name": "7.0 TwoPolylineCenterline",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "import clr\r\nclr.AddReference('AcMgd')\r\nclr.AddReference('AcDbMgd')\r\nclr.AddReference('AcCoreMgd')\r\n\r\nfrom Autodesk.AutoCAD.ApplicationServices import Application\r\nfrom Autodesk.AutoCAD.DatabaseServices import Transaction, OpenMode, Polyline, BlockTable, BlockTableRecord, LayerTable, LayerTableRecord\r\nfrom Autodesk.AutoCAD.EditorInput import PromptEntityOptions, PromptStatus\r\nfrom Autodesk.AutoCAD.Geometry import Point2d\r\n\r\ndoc = Application.DocumentManager.MdiActiveDocument\r\ndb = doc.Database\r\ned = doc.Editor\r\n\r\nLAYER_NAME = \"Proposed Cable Route Centerline\"\r\n\r\ndef pick_polyline(prompt):\r\n    opts = PromptEntityOptions(prompt)\r\n    opts.SetRejectMessage(\"\\nSelect a polyline (LWPOLYLINE).\")\r\n    opts.AddAllowedClass(Polyline, True)\r\n    res = ed.GetEntity(opts)\r\n    if res.Status != PromptStatus.OK:\r\n        raise Exception(\"Selection cancelled by user.\")\r\n    return res.ObjectId\r\n\r\ndef dist(a, b):\r\n    return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5\r\n\r\ndef closest_point_on_polyline(pt, poly):\r\n    best_pt, best_dist = None, float('inf')\r\n    for i in range(len(poly) - 1):\r\n        x1, y1 = poly[i]\r\n        x2, y2 = poly[i + 1]\r\n        dx, dy = x2 - x1, y2 - y1\r\n        seg_len_sq = dx * dx + dy * dy\r\n        t = 0.0 if seg_len_sq == 0 else ((pt[0] - x1) * dx + (pt[1] - y1) * dy) / seg_len_sq\r\n        t = max(0.0, min(1.0, t))\r\n        px, py = x1 + t * dx, y1 + t * dy\r\n        d = dist(pt, (px, py))\r\n        if d < best_dist:\r\n            best_dist, best_pt = d, (px, py)\r\n    return best_pt, best_dist\r\n\r\noid1 = pick_polyline(\"\\nSelect the FIRST edge of the corridor: \")\r\noid2 = pick_polyline(\"\\nSelect the SECOND edge of the corridor: \")\r\n\r\ntr = db.TransactionManager.StartTransaction()\r\ntry:\r\n    with doc.LockDocument():\r\n        pl1 = tr.GetObject(oid1, OpenMode.ForRead)\r\n        pl2 = tr.GetObject(oid2, OpenMode.ForRead)\r\n        pts1 = [(pl1.GetPoint2dAt(i).X, pl1.GetPoint2dAt(i).Y) for i in range(pl1.NumberOfVertices)]\r\n        pts2 = [(pl2.GetPoint2dAt(i).X, pl2.GetPoint2dAt(i).Y) for i in range(pl2.NumberOfVertices)]\r\n\r\n        # align direction so both polylines run the same way before pairing\r\n        if dist(pts1[-1], pts2[0]) > dist(pts1[-1], pts2[-1]):\r\n            pts2 = list(reversed(pts2))\r\n\r\n        centerline, widths = [], []\r\n        for p in pts1:\r\n            cp, d = closest_point_on_polyline(p, pts2)\r\n            centerline.append(((p[0] + cp[0]) / 2.0, (p[1] + cp[1]) / 2.0))\r\n            widths.append(d)\r\n\r\n        lt = tr.GetObject(db.LayerTableId, OpenMode.ForRead)\r\n        if not lt.Has(LAYER_NAME):\r\n            lt.UpgradeOpen()\r\n            ltr = LayerTableRecord()\r\n            ltr.Name = LAYER_NAME\r\n            lt.Add(ltr)\r\n            tr.AddNewlyCreatedDBObject(ltr, True)\r\n\r\n        bt = tr.GetObject(db.BlockTableId, OpenMode.ForRead)\r\n        btr = tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite)\r\n\r\n        new_pl = Polyline()\r\n        for i, (x, y) in enumerate(centerline):\r\n            new_pl.AddVertexAt(i, Point2d(x, y), 0, 0, 0)\r\n        new_pl.Layer = LAYER_NAME\r\n\r\n        btr.AppendEntity(new_pl)\r\n        tr.AddNewlyCreatedDBObject(new_pl, True)\r\n\r\n        tr.Commit()\r\n    total_length = sum(dist(centerline[i], centerline[i - 1]) for i in range(1, len(centerline)))\r\nfinally:\r\n    tr.Dispose()\r\n\r\nOUT = {\r\n    \"CenterlinePoints\": centerline,\r\n    \"CorridorWidths\": widths,\r\n    \"TotalLength\": total_length\r\n}\r\n",
+      "Engine": "IronPython2",
+      "VariableInputPorts": true,
+      "Id": "aae0b0cd911342ff8f3f0b0d3fd787ba",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "6103527fcc5e4251965a09495b4db2e4",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    }
+  ],
+  "Connectors": [],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [
+    {
+      "Name": "DynamoIronPython2.7",
+      "Version": "3.2.1",
+      "ReferenceType": "Package",
+      "Nodes": [
+        "aae0b0cd911342ff8f3f0b0d3fd787ba"
+      ]
+    }
+  ],
+  "EnableLegacyPolyCurveBehavior": true,
+  "Thumbnail": "",
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [
+    {
+      "ExtensionGuid": "28992e1d-abb9-417f-8b1b-05e053bee670",
+      "Name": "Properties",
+      "Version": "3.0",
+      "Data": {}
+    }
+  ],
+  "Author": "",
+  "Linting": {
+    "activeLinter": "None",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": true,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "3.7.0.11777",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "_Background Preview",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "ConnectorPins": [],
+    "NodeViews": [
+      {
+        "Id": "aae0b0cd911342ff8f3f0b0d3fd787ba",
+        "Name": "Python Script",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 300.0,
+        "Y": 200.0
+      }
+    ],
+    "Annotations": [],
+    "X": 0.0,
+    "Y": 0.0,
+    "Zoom": 1.0
+  }
+}

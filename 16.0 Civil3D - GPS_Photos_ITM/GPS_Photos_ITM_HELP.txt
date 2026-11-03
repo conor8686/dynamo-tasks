@@ -1,0 +1,124 @@
+GPS PHOTOS TO ITM - HELP -By Conor Mcenery 20261013
+========================
+File: GPS_Photos_ITM.dyn   (Dynamo graph for Autodesk Civil 3D 2026, CPython3 engine)
+
+
+1. WHAT IT DOES
+---------------
+You pick JPG photos that carry GPS in their EXIF data (normal for phone photos). For each photo the
+graph:
+  - reads the GPS position and converts it to Irish Transverse Mercator (ITM, EPSG:2157),
+  - draws a POINT and a 1 m RING at that ITM position,
+  - places the PHOTO as a picture in a grid above the northernmost point,
+  - draws a LINE from the point to its photo,
+  - adds a LABEL under the photo: file name, Easting, Northing (ITM).
+All of this goes on layer PHOTO-LOC (green) in the ACTIVE drawing, in model space.
+The drawing is assumed to be in ITM coordinates (metres; millimetre drawings are scaled automatically).
+
+
+2. REQUIREMENTS
+---------------
+  - Windows, Civil 3D 2026, Dynamo for Civil 3D (Python3 / CPython3 engine).
+  - Windows PowerShell 5.1 (built in). It is used only to put each photo on the clipboard.
+  - Photos with GPS. Photos without GPS are skipped and listed in the result box.
+  - The photo files must be reachable (local or network path) while the graph runs.
+
+
+3. STEP BY STEP
+---------------
+  1. Open the drawing the photos should go into and make it the ACTIVE drawing.
+  2. Open Dynamo and open GPS_Photos_ITM.dyn.
+  3. DRY RUN first:  leave "Send to Civil 3D" = False, toggle "Trigger", press Run.
+     Choose the photos in the file window. The result box lists every photo with its
+     Easting / Northing. Nothing is drawn.
+  4. Set "Send to Civil 3D" = True, toggle "Trigger", press Run, choose the photos again.
+  5. Do not click in Civil 3D or other windows while it works (a few seconds per photo).
+     Civil 3D runs the drawing commands one after another and zooms to extents at the end.
+  6. Read the last command-line line (press F2):
+        GPS photos: N of M pasted as static pictures.
+     Any photo that failed is listed after it.
+  7. Save the drawing (QSAVE).
+
+To run again, toggle "Trigger" and press Run. The file window opens on every run and remembers the
+last folder you used.
+
+
+4. INPUTS (left side of the graph)
+----------------------------------
+  Trigger ........................ Value is ignored. Toggle it to make Dynamo run the node again.
+  Photo width (m) ................ Width of each photo in the drawing.            Default 20
+  Grid columns ................... Photos per row in the grid.                     Default 4
+  Gap between photos (m) ......... Space between photos in the grid.              Default 2
+  Grid offset above northernmost
+  point (m) ...................... How far above the northernmost point the
+                                   first row of photos starts.                    Default 20
+  Send to Civil 3D ............... False = dry run (list ITM coordinates only).
+                                   True  = draw in the active drawing.
+
+
+5. THE RESULT BOX
+-----------------
+  DRY RUN - drawing untouched ..... Coordinates listed, nothing drawn.
+  SENT via acedPostCommand ........ The drawing command was queued in Civil 3D. Watch the command line.
+  SENT via WM_COPYDATA ............ Same, via the fallback route.
+  LISP WRITTEN - send failed ...... Type the (load "...") line shown in the box into the Civil 3D
+                                    command line and press Enter. The same drawing happens.
+  CANCELLED ....................... No photos were chosen.
+  ERROR ... ....................... The text says which stage failed (for example no GPS in the photos).
+
+
+6. WHAT YOU GET IN THE DRAWING
+------------------------------
+  - Layer PHOTO-LOC (green): points, rings, lines, labels and the pictures.
+  - Point style is set to PDMODE 34 / PDSIZE 0.5 m so the points are visible.
+  - Photos are pasted as a 1600 px wide copy, typed "Static" OLE pictures stored inside the DWG
+    (no link to the original file). Each adds roughly 0.5-1 MB to the DWG.
+  - "Static" means the picture can be moved, scaled, layered and plotted, but it cannot be
+    double-clicked to edit in Paint.
+  - ITM accuracy: GRS80 transverse Mercator, WGS84 treated as ETRS89, good to about a metre.
+  - Photos taken within a few metres of each other will have their points close together and their
+    leader lines nearly overlapping.
+
+
+7. TROUBLESHOOTING
+------------------
+  Nothing appears in the drawing
+     - Was "Send to Civil 3D" True? A dry run draws nothing.
+     - Type ZOOM then E (zoom extents). ITM coordinates are far from the origin.
+     - Is the intended drawing the ACTIVE one? Everything goes into the active drawing.
+     - Press F2 and read the last lines of the command-line text.
+
+  "OLE Text Size" dialog appears and no picture is drawn
+     - This dialog appears when the pasted content contains text. It usually means the photo did NOT
+       reach the clipboard and old text was pasted instead.
+     - The graph checks that the image is on the clipboard and skips the paste if it is not. It also
+       presses OK on that dialog automatically.
+     - If it still happens: close other programs that use the clipboard (clipboard managers, remote
+       desktop clipboard sync), and make sure PowerShell is allowed to run. Send the exact dialog text
+       and the last command-line line to whoever maintains this graph.
+
+  "Could not load type ... AcWindowState" error
+     - This was caused by Python touching Civil 3D's .NET objects. This version does not do that.
+       If it appears, you are running an older copy of the graph.
+
+  The file window does not open
+     - Dynamo may still show an old copy of the graph. Close it and re-open the .dyn from disk.
+
+  Photos are listed as failed on the command line
+     - The photo path may not be reachable, or the photo could not be read. Check the path in a
+       file window and run again with just that photo.
+
+  Re-running adds the photos a second time
+     - Delete the old items on layer PHOTO-LOC first (or erase them) and run again.
+
+Files the graph writes to your %TEMP% folder while running (safe to delete afterwards):
+  gps_photos.lsp, gps_clip_path.txt, gps_clip_ok.flag, gps_done.flag, gps_clip.ps1, gps_clip_bmp.ps1,
+  gps_watch.ps1 (some may not exist).
+
+
+8. KNOWN LIMITS
+---------------
+  - Works in the active drawing only; it cannot choose or open a different DWG.
+  - Pictures are static, not embedded Paint objects.
+  - Written and tested in parts (GPS reading, ITM conversion, the drawing and paste in Civil 3D).
+    A full Dynamo run on a second PC had not been confirmed when this help was written.

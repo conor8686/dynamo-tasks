@@ -1,0 +1,367 @@
+{
+  "Uuid": "ee20aaf7-c99e-4ebf-bb48-9218bfdcb23f",
+  "IsCustomNode": false,
+  "Description": "Cleaned Polyline-to-Alignment Dynamo graph for Civil 3D.",
+  "Name": "C1.0 PolylineToAlignment V1.8 MAJOR7 MINOR1 SAFE",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [
+    {
+      "Id": "80487ed9d66f4c4c9379f7a59690519f",
+      "Name": "Major_Chainage_Style",
+      "Type": "string",
+      "Type2": "string",
+      "Value": "MWP - Perpendicular with Tick",
+      "Description": "Creates a string."
+    },
+    {
+      "Id": "a7c2e07a4dda4e35afad8031db4518c6",
+      "Name": "Minor_Chainage_Style",
+      "Type": "string",
+      "Type2": "string",
+      "Value": "Tick",
+      "Description": "Creates a string."
+    },
+    {
+      "Id": "1a52924e50cc462f87fb6742ef631c08",
+      "Name": "Curve_Radius",
+      "Type": "number",
+      "Type2": "number",
+      "Value": "12",
+      "NumberType": "Double",
+      "Description": "Creates a number."
+    }
+  ],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "# PolylineToAlignment V1.8 SAFE - Major tick 7mm / Minor tick style 1mm\n# Dynamo for Civil 3D | IronPython 2\n\nimport sys\nimport clr\n\nclr.AddReference('AcMgd')\nclr.AddReference('AcDbMgd')\nclr.AddReference('AcCoreMgd')\nclr.AddReference('AeccDbMgd')\n\nimport Autodesk.AutoCAD.ApplicationServices as AcAppServ\nimport Autodesk.AutoCAD.DatabaseServices as AcDb\nimport Autodesk.AutoCAD.EditorInput as AcEd\nimport Autodesk.Civil.ApplicationServices as CivAppServ\nimport Autodesk.Civil.DatabaseServices as CivDb\nimport Autodesk.Civil.DatabaseServices.Styles as CivStyles\n\n# -----------------------------------------------------------------------------\n# INPUTS\n# -----------------------------------------------------------------------------\nalignmentStyleName = IN[0] if len(IN) > 0 else None\nmajorLabelStyleName = IN[1] if len(IN) > 1 else None\nminorLabelStyleName = IN[2] if len(IN) > 2 else None\ncurveRadius = IN[3] if len(IN) > 3 else 0.0\n\n# Settings\nERASE_SOURCE_POLYLINE = False\nADD_CURVES_DURING_CONVERSION = False\nMAJOR_STATION_INCREMENT = 10.0\nMINOR_STATION_INCREMENT = 1.0\nDEFAULT_ALIGNMENT_NAME = 'Alignment-1'\n\n\ndef get_or_create_alignment_style_id(style_collection, requested_name):\n    # Alignment styles can be created normally if missing.\n    if requested_name:\n        name = str(requested_name).strip()\n        if name:\n            try:\n                return style_collection[name], 'existing'\n            except:\n                pass\n            try:\n                return style_collection.Add(name), 'created'\n            except:\n                pass\n    return (style_collection[0], 'fallback') if style_collection.Count else (AcDb.ObjectId.Null, 'fallback')\n\n\ndef clone_label_style_safely(style_collection, requested_name, transaction):\n    \"\"\"Use an existing native label style or clone a native sibling.\n    Never creates a blank LabelStyle. This avoids unstable/incomplete styles.\n    \"\"\"\n    name = str(requested_name).strip() if requested_name else 'MWP - Perpendicular with Tick'\n    safe_name = name + '_SAFE'\n\n    # Always prefer our known-safe cloned style on repeat runs.\n    try:\n        sid = style_collection[safe_name]\n        if not sid.IsNull:\n            return sid, 'existing-safe'\n    except:\n        pass\n\n    if style_collection.Count == 0:\n        return AcDb.ObjectId.Null, 'no-base-style'\n\n    # Pick a native existing style as the template. Avoid the style created by older scripts.\n    base_id = AcDb.ObjectId.Null\n    for i in range(style_collection.Count):\n        sid = style_collection[i]\n        try:\n            st = transaction.GetObject(sid, AcDb.OpenMode.ForRead)\n            nm = st.Name\n            if nm != name and not nm.endswith('_SAFE'):\n                base_id = sid\n                break\n        except:\n            pass\n    if base_id.IsNull:\n        base_id = style_collection[0]\n\n    base_style = transaction.GetObject(base_id, AcDb.OpenMode.ForRead)\n    new_id = base_style.CopyAsSibling(safe_name)\n    return new_id, 'cloned-native'\n\n\ndef configure_major_station_style_safe(style_id, transaction):\n    \"\"\"Modify only a native cloned Major Station label style.\n    Existing component objects are reused where possible.\n    \"\"\"\n    notes = []\n    if style_id.IsNull:\n        return notes\n    style = transaction.GetObject(style_id, AcDb.OpenMode.ForWrite)\n    try: style.Description = 'MWP safe major station style - cloned from native Civil 3D style.'\n    except: pass\n\n    # Text: reuse first native text component; add only if the native style has none.\n    try:\n        ids = style.GetComponents(CivStyles.LabelStyleComponentType.Text)\n        if ids.Count == 0:\n            style.AddComponent('Major Station', CivStyles.LabelStyleComponentType.Text)\n            ids = style.GetComponents(CivStyles.LabelStyleComponentType.Text)\n        txt = transaction.GetObject(ids[0], AcDb.OpenMode.ForWrite)\n        try: txt.General.Name.Value = 'Major Station'\n        except: pass\n        try: txt.General.Visible.Value = True\n        except: pass\n        try: txt.Text.Contents.Value = '<[Chainage Value(Um|FS|P0|RN|AP|Sn|TN|B1|EN|W0|OF)]>'\n        except Exception as ex: notes.append('contents: ' + str(ex))\n        try: txt.Text.Height.Value = 0.0025\n        except Exception as ex: notes.append('height: ' + str(ex))\n        try: txt.Text.Angle.Value = 4.71238898038469\n        except Exception as ex: notes.append('angle: ' + str(ex))\n        try: txt.Text.XOffset.Value = 0.0\n        except: pass\n        try: txt.Text.YOffset.Value = -0.005\n        except Exception as ex: notes.append('Y offset: ' + str(ex))\n    except Exception as ex:\n        notes.append('text component: ' + str(ex))\n\n    # Tick: reuse native tick component if present.\n    try:\n        ids = style.GetComponents(CivStyles.LabelStyleComponentType.Tick)\n        if ids.Count == 0:\n            style.AddComponent('MWP_Tick', CivStyles.LabelStyleComponentType.Tick)\n            ids = style.GetComponents(CivStyles.LabelStyleComponentType.Tick)\n        tick = transaction.GetObject(ids[0], AcDb.OpenMode.ForWrite)\n        try: tick.General.Name.Value = 'MWP_Tick'\n        except: pass\n        try: tick.General.Visible.Value = True\n        except: pass\n        try: tick.Tick.BlockName.Value = 'AeccTickLine'\n        except Exception as ex: notes.append('tick block: ' + str(ex))\n        try: tick.Tick.BlockHeight.Value = 0.007\n        except Exception as ex: notes.append('major tick height: ' + str(ex))\n        try: tick.Tick.RotationAngle.Value = 0.0\n        except: pass\n        try: tick.Tick.AlignWithObject.Value = True\n        except Exception as ex: notes.append('tick align: ' + str(ex))\n    except Exception as ex:\n        notes.append('tick component: ' + str(ex))\n    return notes\n\ndef remove_station_label_groups(alignment, transaction):\n    \"\"\"Remove existing major/minor station groups inherited from label set.\"\"\"\n    ids_to_erase = []\n\n    for group_id in alignment.GetLabelGroupIds():\n        group = transaction.GetObject(group_id, AcDb.OpenMode.ForRead)\n        if (isinstance(group, CivDb.AlignmentStationLabelGroup) or\n                isinstance(group, CivDb.AlignmentMinorStationLabelGroup)):\n            ids_to_erase.append(group_id)\n\n    for group_id in ids_to_erase:\n        transaction.GetObject(group_id, AcDb.OpenMode.ForWrite).Erase()\n\n\ndef add_radius_curves(alignment, radius):\n    \"\"\"Insert a free curve at each remaining Line-Line PI.\"\"\"\n    warnings = []\n\n    if not radius or float(radius) <= 0.0:\n        return warnings\n\n    failed_pairs = set()\n    max_iterations = 200\n\n    for _ in range(max_iterations):\n        entities = alignment.Entities\n        pair = None\n\n        for i in range(entities.Count - 1):\n            first = entities.GetEntityByOrder(i)\n            second = entities.GetEntityByOrder(i + 1)\n\n            if (first.EntityType == CivDb.AlignmentEntityType.Line and\n                    second.EntityType == CivDb.AlignmentEntityType.Line):\n                key = (first.EntityId, second.EntityId)\n                if key not in failed_pairs:\n                    pair = key\n                    break\n\n        if pair is None:\n            break\n\n        previous_id, next_id = pair\n        try:\n            entities.AddFreeCurve(\n                previous_id,\n                next_id,\n                float(radius),\n                CivDb.CurveParamType.Radius,\n                False,\n                CivDb.CurveType.Compound\n            )\n        except Exception as ex:\n            failed_pairs.add(pair)\n            warnings.append(\n                'PI between entities {0}/{1}: {2}'.format(\n                    previous_id, next_id, str(ex)\n                )\n            )\n\n    return warnings\n\n\n# -----------------------------------------------------------------------------\n# MAIN\n# -----------------------------------------------------------------------------\ndoc = AcAppServ.Application.DocumentManager.MdiActiveDocument\ndb = doc.Database\ned = doc.Editor\n\nalignmentName = None\nalignmentId = None\nmessage = None\n\nselect_options = AcEd.PromptEntityOptions(\n    '\\nSelect a polyline to convert to an alignment: '\n)\nselect_options.SetRejectMessage('\\nMust be a Polyline (LWPOLYLINE).')\nselect_options.AddAllowedClass(clr.GetClrType(AcDb.Polyline), True)\nselect_result = ed.GetEntity(select_options)\n\nif select_result.Status != AcEd.PromptStatus.OK:\n    message = 'No polyline selected.'\nelse:\n    name_options = AcEd.PromptStringOptions(\n        '\\nEnter a name for the new alignment: '\n    )\n    name_options.AllowSpaces = True\n    name_options.DefaultValue = DEFAULT_ALIGNMENT_NAME\n    name_options.UseDefaultValue = True\n    name_result = ed.GetString(name_options)\n\n    if name_result.Status != AcEd.PromptStatus.OK:\n        message = 'No alignment name entered.'\n    else:\n        new_name = name_result.StringResult\n\n        with doc.LockDocument():\n            with db.TransactionManager.StartTransaction() as tr:\n                try:\n                    civil_doc = CivAppServ.CivilApplication.ActiveDocument\n\n                    # Alignment style and default label set\n                    alignment_style_id, alignment_style_status = get_or_create_alignment_style_id(\n                        civil_doc.Styles.AlignmentStyles,\n                        alignmentStyleName\n                    )\n\n                    label_set_id = AcDb.ObjectId.Null\n                    label_sets = civil_doc.Styles.LabelSetStyles.AlignmentLabelSetStyles\n                    if label_sets.Count > 0:\n                        label_set_id = label_sets[0]\n\n                    # Convert selected polyline to alignment\n                    polyline_options = CivDb.PolylineOptions()\n                    polyline_options.PlineId = select_result.ObjectId\n                    polyline_options.EraseExistingEntities = ERASE_SOURCE_POLYLINE\n                    polyline_options.AddCurvesBetweenTangents = ADD_CURVES_DURING_CONVERSION\n\n                    alignmentId = CivDb.Alignment.Create(\n                        civil_doc,\n                        polyline_options,\n                        new_name,\n                        AcDb.ObjectId.Null,   # site\n                        db.Clayer,\n                        alignment_style_id,\n                        label_set_id\n                    )\n\n                    alignment = tr.GetObject(alignmentId, AcDb.OpenMode.ForWrite)\n                    alignmentName = alignment.Name\n\n                    # Replace inherited station groups with explicit groups below\n                    remove_station_label_groups(alignment, tr)\n\n                    # Add curves at sharp Line-Line PIs\n                    curve_warnings = add_radius_curves(alignment, curveRadius)\n\n                    # Resolve major/minor station label styles\n                    label_styles = civil_doc.Styles.LabelStyles.AlignmentLabelStyles\n                    major_style_id, major_style_status = clone_label_style_safely(\n                        label_styles.MajorStationLabelStyles, majorLabelStyleName, tr\n                    )\n                    # Minor labels are never modified; use requested existing style or first native style.\n                    minor_styles = label_styles.MinorStationLabelStyles\n                    try:\n                        minor_style_id = minor_styles[minorLabelStyleName] if minorLabelStyleName else minor_styles[0]\n                        minor_style_status = 'existing'\n                    except:\n                        minor_style_id = minor_styles[0] if minor_styles.Count else AcDb.ObjectId.Null\n                        minor_style_status = 'fallback'\n\n\n                    # Force the major label to match the requested MWP appearance.\n                    # Colour is intentionally left untouched / ByLayer as requested.\n                    label_style_notes = configure_major_station_style_safe(\n                        major_style_id, tr\n                    )\n\n                    # Create major station group, then minor group linked to it\n                    if not major_style_id.IsNull:\n                        major_group_id = CivDb.AlignmentStationLabelGroup.CreateMajor(\n                            major_style_id,\n                            alignmentId,\n                            MAJOR_STATION_INCREMENT\n                        )\n\n                        if not minor_style_id.IsNull:\n                            CivDb.AlignmentMinorStationLabelGroup.Create(\n                                minor_style_id,\n                                major_group_id,\n                                MINOR_STATION_INCREMENT\n                            )\n\n                    # Build non-fatal warnings\n                    warnings = []\n\n                    if label_style_notes:\n                        warnings.append('label-style notes: ' + '; '.join(label_style_notes))\n\n                    if curve_warnings:\n                        warnings.append(\n                            'curve insertion at radius {0}: {1} PI(s) failed - {2}'.format(\n                                curveRadius,\n                                len(curve_warnings),\n                                '; '.join(curve_warnings)\n                            )\n                        )\n\n                    if alignmentStyleName and alignment_style_status == 'created':\n                        warnings.append(\"alignment style '{0}' was missing and has been created\".format(alignmentStyleName))\n                    elif alignmentStyleName and alignment_style_status == 'fallback':\n                        warnings.append(\"alignment style '{0}' could not be created; first available style used\".format(alignmentStyleName))\n\n                    if major_style_status == 'cloned-native':\n                        warnings.append(\"major station label style cloned safely as '{0}_SAFE'\".format(majorLabelStyleName or 'MWP - Perpendicular with Tick'))\n                    elif major_style_status == 'no-base-style':\n                        warnings.append('no native Major Station label style was available to clone')\n\n                    if minorLabelStyleName and minor_style_status == 'fallback':\n                        warnings.append(\"minor station label style '{0}' could not be created; first available style used\".format(minorLabelStyleName))\n\n                    if warnings:\n                        message = 'Warning: ' + '; '.join(warnings)\n\n                    tr.Commit()\n\n                except Exception as ex:\n                    exc_type, exc_value, exc_tb = sys.exc_info()\n                    line_no = exc_tb.tb_lineno if exc_tb is not None else -1\n                    message = 'Line {0}: {1}: {2}'.format(\n                        line_no,\n                        exc_type.__name__ if hasattr(exc_type, '__name__') else str(exc_type),\n                        exc_value\n                    )\n                    tr.Abort()\n\nOUT = alignmentName, alignmentId, message\n",
+      "Engine": "IronPython2",
+      "VariableInputPorts": true,
+      "Id": "b8558aeb3a70481a8752dfbff2919bfa",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [
+        {
+          "Id": "013956718d3e4967a56dfa4a773dafd2",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "20a98c42b850414ca665081444b3d7cf",
+          "Name": "IN[1]",
+          "Description": "Input #1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "c398da2574214fb5bce9a095dcaf885f",
+          "Name": "IN[2]",
+          "Description": "Input #2",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "ae10bd91927a448faacb09f28b072a26",
+          "Name": "IN[3]",
+          "Description": "Input #3",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "dc50f60cfeb84ec495068d627124066f",
+          "Name": "",
+          "Description": "Python Script Output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.StringInput, CoreNodeModels",
+      "SerializedWidth": 0.0,
+      "SerializedHeight": 0.0,
+      "Id": "73d85f1168194c0fa68ab5c828f5fa06",
+      "NodeType": "StringInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "1f979b6e53aa43d49a37a498ea48ab2a",
+          "Name": "",
+          "Description": "String",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a string.",
+      "InputValue": "MWP GRID ALIGNMENT"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.StringInput, CoreNodeModels",
+      "SerializedWidth": 0.0,
+      "SerializedHeight": 0.0,
+      "Id": "80487ed9d66f4c4c9379f7a59690519f",
+      "NodeType": "StringInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "1ba81585b69f4ebda041fbe8938bcd45",
+          "Name": "",
+          "Description": "String",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a string.",
+      "InputValue": "MWP - Perpendicular with Tick"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.StringInput, CoreNodeModels",
+      "SerializedWidth": 0.0,
+      "SerializedHeight": 0.0,
+      "Id": "a7c2e07a4dda4e35afad8031db4518c6",
+      "NodeType": "StringInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "93a8405d955741bba3b0017f7e4cd67f",
+          "Name": "",
+          "Description": "String",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a string.",
+      "InputValue": "Tick"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.DoubleInput, CoreNodeModels",
+      "NumberType": "Double",
+      "Id": "1a52924e50cc462f87fb6742ef631c08",
+      "NodeType": "NumberInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "7ba146660bed44a3a8dfc02281c5736a",
+          "Name": "",
+          "Description": "Double",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a number.",
+      "InputValue": 12.0
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "WatchWidth": 200.0,
+      "WatchHeight": 200.0,
+      "Id": "2f9f416989d94f0994e8bd53728f87a2",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "701935b3544a4e2c9102d38aaadb2aa5",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "0c8e0237a9a941cdad14e7fc7bf7b100",
+          "Name": "",
+          "Description": "Node output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualizes a node's output"
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "dc50f60cfeb84ec495068d627124066f",
+      "End": "701935b3544a4e2c9102d38aaadb2aa5",
+      "Id": "b2a5a22c286d41de879ce08a8754b04d",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "1f979b6e53aa43d49a37a498ea48ab2a",
+      "End": "013956718d3e4967a56dfa4a773dafd2",
+      "Id": "ba47058dcb5544b6bd9763d5367c63f0",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "1ba81585b69f4ebda041fbe8938bcd45",
+      "End": "20a98c42b850414ca665081444b3d7cf",
+      "Id": "64100325d65040708df125e993200b8b",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "93a8405d955741bba3b0017f7e4cd67f",
+      "End": "c398da2574214fb5bce9a095dcaf885f",
+      "Id": "040d041470e341bda08a9c8aff2fdbd0",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "7ba146660bed44a3a8dfc02281c5736a",
+      "End": "ae10bd91927a448faacb09f28b072a26",
+      "Id": "6f721da225874d469b712a1ce275caad",
+      "IsHidden": "False"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [
+    {
+      "Name": "DynamoIronPython2.7",
+      "Version": "3.2.1",
+      "ReferenceType": "Package",
+      "Nodes": [
+        "b8558aeb3a70481a8752dfbff2919bfa"
+      ]
+    }
+  ],
+  "EnableLegacyPolyCurveBehavior": false,
+  "Thumbnail": "",
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [
+    {
+      "ExtensionGuid": "28992e1d-abb9-417f-8b1b-05e053bee670",
+      "Name": "Properties",
+      "Version": "3.7",
+      "Data": {}
+    }
+  ],
+  "Author": "",
+  "Linting": {
+    "activeLinter": "None",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": true,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "3.7.0.11777",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "_Background Preview",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "ConnectorPins": [],
+    "NodeViews": [
+      {
+        "Id": "b8558aeb3a70481a8752dfbff2919bfa",
+        "Name": "Polyline To Alignment",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 375.0,
+        "Y": 131.0
+      },
+      {
+        "Id": "73d85f1168194c0fa68ab5c828f5fa06",
+        "Name": "Alignment_Style",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -38.40824253035447,
+        "Y": 40.04314722240906
+      },
+      {
+        "Id": "80487ed9d66f4c4c9379f7a59690519f",
+        "Name": "Major_Chainage_Style",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -40.261374881300696,
+        "Y": 173.44488982059173
+      },
+      {
+        "Id": "a7c2e07a4dda4e35afad8031db4518c6",
+        "Name": "Minor_Chainage_Style",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -43.96763958319315,
+        "Y": 307.7731985942475
+      },
+      {
+        "Id": "1a52924e50cc462f87fb6742ef631c08",
+        "Name": "Curve_Radius",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -43.96763958319315,
+        "Y": 441.0988240557201
+      },
+      {
+        "Id": "2f9f416989d94f0994e8bd53728f87a2",
+        "Name": "Watch",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 694.8876176051488,
+        "Y": 139.76798160968673
+      }
+    ],
+    "Annotations": [],
+    "X": 176.91959368073285,
+    "Y": 68.23552355437982,
+    "Zoom": 0.7658293928515519
+  }
+}

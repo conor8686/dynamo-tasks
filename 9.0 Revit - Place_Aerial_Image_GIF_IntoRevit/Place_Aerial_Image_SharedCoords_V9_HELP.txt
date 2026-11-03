@@ -1,0 +1,81 @@
+PLACE AERIAL IMAGE AT SHARED COORDINATES  (Place_Aerial_Image_SharedCoords_V9.dyn)
+=========================================================================
+
+WHAT IT DOES
+Takes a georeferenced TIF exported from QGIS, reads its position and size from the file,
+then resizes the Revit image to the real-world size (metres) and moves its TOP-LEFT corner
+to the right E/N in the Revit model's shared coordinates (e.g. ITM, EPSG:2157).
+
+THE QUESTION WINDOW (appears every time you run)
+  Title:     TIF from QGIS?
+  Question:  Is the TIF from QGIS (Raster > Conversion, or Layer > Export > Save As)?
+             It must be a GeoTIFF in the SAME coordinate system as this Revit model
+             (e.g. ITM, EPSG:2157), in metres.
+  Answer YES -> the file window opens, select the TIF.
+  Answer NO  -> nothing happens. Export the TIF from QGIS first, then run again.
+
+  Why it asks: the script does NOT convert coordinate systems. If the TIF is in a different
+  system from the Revit model (e.g. web mercator EPSG:3857, or lat/long), the image lands in
+  the wrong place or at the wrong size.
+
+THEN THE FILE WINDOW
+  Title:  Select the TIF image exported from QGIS
+  Pick the .tif. Cancel = nothing is changed.
+  (It may open behind Revit - check the taskbar.)
+
+INPUTS
+  Start folder for file window   where the file window opens (default Documents\Map_2026)
+  Create                         False = dry run (shows what it would do, changes nothing)
+                                 True  = resizes and moves the image
+
+BEFORE YOU RUN
+  1. QGIS: right-click the aerial layer > Export > Save As
+        Format GeoTIFF, CRS EPSG:2157, Resolution 0.5 m, Create VRT OFF, save as .tif
+  2. Revit: model has shared coordinates set to ITM (Manage > Coordinates).
+  3. Revit: Insert > Image, pick the same .tif, in the Site plan view
+     (or select the image before running).
+  4. Open the Site plan view, then run the graph.
+
+RUN ORDER
+  1. Create = False, Run. Check the Watch node: TIF, image found, target E/N, size.
+  2. Create = True, Run. Watch node reports the E/N of the top-left corner after placing.
+     Compare with the file values.
+
+COMMON PROBLEMS
+  Image lands far away / wrong size   TIF and Revit are in different coordinate systems,
+                                      or the TIF is in degrees or feet. Re-export in the
+                                      Revit model's metric projected system.
+  "No image named like ..."           Insert the same .tif in the Site plan, or select the image.
+  "More than one image selected"      Select just one image.
+  File window not visible             Look in the taskbar - it may be behind Revit.
+  "property cannot be read"           Fixed from V8 (image name is read another way).
+  Cancelled                           You pressed No / Cancel. Run again.
+
+FULL STEPS: QGIS TO REVIT
+  App    Step  Task                   Details
+  QGIS   1     Set project CRS        Click CRS button (bottom-right) > filter 2157 > IRENET95 / Irish Transverse Mercator EPSG:2157 > OK
+  QGIS   2     Add aerial imagery     Browser panel > XYZ Tiles > New Connection > Name: Esri World Imagery, URL: https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}, Max zoom 19 > double-click to add
+  QGIS   3     Re-check CRS           If CRS changed to EPSG:3857, set it back to EPSG:2157
+  QGIS   4     Zoom to site           Coordinate box: type E,N (e.g. 600000,600000) + Enter, or Ctrl+K locator bar; set Scale box e.g. 1:2000
+  QGIS   5     Export GeoTIFF         Right-click layer > Export > Save As > GeoTIFF; CRS EPSG:2157; Extent = Map Canvas Extent; Resolution H/V = 0.5; UNTICK Create VRT; save as .tif
+  QGIS   6     Convert to JPG         Raster > Conversion > Translate; Profile = Default (no COMPRESS=JPEG); extra params: -b 1 -b 2 -b 3 -co WORLDFILE=YES -co QUALITY=90; output Map_2026_V1.jpg (file type All files); Run
+  QGIS   7     Note extent            Top-left corner E 681039.34, N 672247.76; width ~3476.6 m, height ~2320.4 m
+  Revit  8     Insert image           Site plan view > Insert > Image (or Link Image) > pick Map_2026_V1.jpg
+  Revit  9     Scale                  Properties > Width = 3476.6 m (or Modify | Raster Images > Scale using two known points)
+  Revit  10    Position               Place top-left corner at E 681039.34, N 672247.76 if shared ITM coordinates are set; otherwise align to a known feature
+  Revit  11    Finish                 Pin image; Send to Back; check Visibility/Graphics > Raster Images is on
+  Alt    12    Georeferenced option   Civil 3D: MAPIINSERT the GeoTIFF (ITM drawing) > save DWG > Revit Link CAD, Auto - By Shared Coordinates
+
+  NOTE: Steps 6, 8, 9 and 10 are the manual route. With this Dynamo graph you can skip step 6 and use
+  the .tif from step 5 directly: step 8 insert the .tif, then run the graph (it does steps 9 and 10:
+  size and position, read from the .tif). Steps 6 and 8 with a JPG only work if a .wld world file is
+  beside the JPG.
+
+FILES
+  V1 hard-coded numbers; V2 reads path; V3 notes; V4 folder picker; V5 file window;
+  V6 .Name fix; V7 window titles; V8 .Name fix 2; V9 question window;
+  V10 inserts the TIF into the active view itself if it is not there (no manual Insert > Image).
+      With V10, skip step 3 under BEFORE YOU RUN: open the Site plan view and run.
+      A selected image is still used first; an image already in the view with the TIF's name is moved.
+  V11 fixes "'NoneType' object has no attribute 'Min'": places the image with SetLocation(TopLeft)
+      instead of the bounding box (which is empty for images). Use V11.

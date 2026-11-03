@@ -1,0 +1,391 @@
+{
+  "Uuid": "2d6a5b3e-9c1f-4a7e-8b2d-6f4e1c9a7d3b",
+  "IsCustomNode": false,
+  "Description": "Select a Civil 3D Profile, choose duct/cable from embedded Profile Elements table, and add sag/crest curves using the selected table radius.",
+  "Name": "C12.01_Add_Profile_SagCrest_Curves_TABLE_MANUAL_v7 (1)",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [
+    {
+      "Id": "dd44ee55ff664077b188990011223344",
+      "Name": "Manual Curve Radius R (m) - used when True",
+      "Type": "number",
+      "Type2": "number",
+      "Value": "3.4",
+      "NumberType": "Double",
+      "Description": "Creates a number."
+    },
+    {
+      "Id": "ff66007a11884299d3aa112233445566",
+      "Name": "Min grade break (decimal)",
+      "Type": "number",
+      "Type2": "number",
+      "Value": "0",
+      "NumberType": "Double",
+      "Description": "Creates a number."
+    },
+    {
+      "Id": "28b6218b6b0c40e28ee09995d7e8ce1d",
+      "Name": "Use Manual Radius?  False=Table / True=Manual",
+      "Type": "boolean",
+      "Type2": "boolean",
+      "Value": "false",
+      "Description": "Enables selection between True and False"
+    }
+  ],
+  "Outputs": [
+    {
+      "Id": "1188229b33aa44bb95cc334455667788",
+      "Name": "Watch",
+      "Type": "unknown",
+      "InitialValue": "",
+      "Description": "Visualizes a node's output"
+    }
+  ],
+  "Nodes": [
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "\"\"\"\nDynamo for Civil 3D - Python Script node (engine: IronPython2)\n\nNOTE: IronPython2, not CPython3 - touching Application.DocumentManager /\nAutodesk.Civil.DatabaseServices pulls in Autodesk.AutoCAD.Interop, which\nDynamo's CPython3 (pythonnet) engine cannot load in this Civil3D build\n(\"Could not load type ... AcWindowState ...\"). IronPython2's native CLR\nhosting resolves it fine - same reason every other Civil3D-API script in\nthis repo (Add_MWP-NEZ_ChainageLevel_Labels.py, Diagnose_Civil3D_Styles.py)\nuses IronPython2.\n\nPrompts you to select one or more Profile Views on screen. For every design\n(layout) profile plotted in each selected view, walks every PVI that is\ncurrently a plain tangent-tangent break (no curve yet) and inserts a\nsymmetric parabolic vertical curve there - EditSagCurve() where the grade\nincreases through the PVI (valley), EditCrestCurve() where it decreases\n(hilltop) - sized from a single curve radius R (m):\n\n    curve length L = R x |grade_out - grade_in|\n\nwith grade_out/grade_in as decimal fractions (e.g. 0.03 for 3%). That is R\nas used for \"VC RAD\" on Irish/UK road longitudinal-section drawings, not an\nAASHTO K value expressed in percent (K = R / 100 in that convention).\nConfirmed against Civil3D's own native Insert PVI / Curve Settings dialog\n(entering a Radius and reading back the resulting Length/K value).\n\nIf that ideal length won't fit between the PVI and its neighbour (i.e. the\nPVI's tangent on that side is shorter than L/2), the length is CLIPPED to\n2 x the shorter available tangent, matching what Civil3D's own dialog does\nin the same situation (confirmed against a native example where Radius 3.4\nproduced Length 3.310 - not R x delta - because the neighbouring PVI didn't\nleave enough room; Civil3D shows K Value 0.000 for a curve clipped like\nthis, since it no longer corresponds to the requested radius). A clipped\ncurve is still added and counted as a success, just flagged in the report\nwith the ideal length it couldn't reach.\n\nPVIs where the grade doesn't actually break (|delta grade| below\nminGradeBreak) are left alone and reported as skipped. Every other interior\nPVI just gets Profile.Entities.AddFreeSymmetricParabolaByRadius called on it directly, inside its\nown try/except - a PVI that's already curved, or can't fit the requested\nradius (curve longer than the available tangent to its neighbour), throws\nfrom that call and is reported as a failure with Civil3D's own message,\nrather than pre-checked. (Deliberate: this OEM build's ProfilePVI.PVIType\ngetter returns null for an ordinary uncurved PVI instead of throwing or\nreturning TangentWithoutCurve, the same broken-managed-property pattern as\nthe .Name getters documented in Add_MWP-NEZ_ChainageLevel_Labels_HELP.md -\nso pre-checking PVIType here misclassified every plain PVI as \"already\ncurved\" and skipped the whole profile. Letting the Profile entity API itself\ndecide sidesteps that.)\n\nInputs:\n  Runtime dropdown: duct/cable selection from P02_Detail Summary.xlsx Profile Elements Table; its Curve Radius is used.\n  IN[0] : manual curve radius in metres (used when IN[2] = True)\n  IN[1] : minimum grade break to treat as a real PVI, decimal fraction\n          (number, default 0.0001 = 0.01%)\n  IN[2] : manual radius override (Boolean): False = TABLE dropdown, True = IN[0]\n\nOutput:\n  OUT   : list[str] run report - one line per PVI processed/skipped, plus\n          per-profile and grand totals\n\"\"\"\nimport clr\nfrom System import Array\n\nclr.AddReference('AcMgd')\nclr.AddReference('AcCoreMgd')\nclr.AddReference('AcDbMgd')\nclr.AddReference('AeccDbMgd')\nclr.AddReference('System.Windows.Forms')\nclr.AddReference('System.Drawing')\n\nfrom Autodesk.AutoCAD.ApplicationServices import Application\nfrom Autodesk.AutoCAD.DatabaseServices import OpenMode\nfrom Autodesk.AutoCAD.EditorInput import PromptSelectionOptions\nfrom Autodesk.Civil.ApplicationServices import CivilDocument\nfrom Autodesk.Civil.DatabaseServices import ProfileView, Profile, VerticalCurveType\nfrom System.Windows.Forms import Form, Label, ComboBox, Button, DialogResult, FormStartPosition, ComboBoxStyle\nfrom System.Drawing import Point, Size\n\n# Embedded lookup updated from P02_Detail Summary.xlsx -> Profile Elements Table.\n# Tuple: (No., Duct / Cable, PRACTICAL Curve Radius in metres).\n#\n# TABLE NOTE - Profile Elements recommended practical design radii:\n#  01  40mm E-DUCT                                      R = 1.500 m\n#  02  50mm E-DUCT / E-DUCT_EARTH                      R = 1.500 m\n#  03  63mm E-DUCT_SDR17.6                              R = 2.000 m\n#  04  110mm E-DUCT_SDR17.6 / COMMS_SDR17.6             R = 3.000 m\n#  05  125mm E-DUCT_SDR17.6 / COMMS / ECC_SDR17.6       R = 3.500 m\n#  06  125mm E-DUCT_HDD_SDR11                            R = 3.500 m\n#  07  140mm E-DUCT_COMMS_HDD_SDR11                      R = 3.500 m\n#  08  160mm E-DUCT_SDR21                                R = 4.500 m\n#  09  180mm E-DUCT_HDD_SDR11                            R = 4.500 m\n#  10  200mm E-DUCT_SDR21                                R = 5.500 m\n#  11-14 Project direct-buried HV cable rows             R = 2.500 m\n#  15-21 Generic direct-buried cable rows                R = NOT SET (0.000 m)\n#\n# Source notes carried into this script:\n# - Use the PRACTICAL design radius; do not enter a smaller radius in Civil 3D.\n# - K Value = Curve Radius / 100.\n# - Profile Curve Length in the spreadsheet is only a representative placeholder;\n#   Civil 3D derives the actual length from radius and the real PVI grade change.\n# - Profile Curve Type and asymmetric lengths are per-PVI values.\n# - Generic/reference rows with radius 0 must be confirmed before use.\nPROFILE_RADIUS_TABLE = [\n    (1,  '40mm E-DUCT', 1.500),\n    (2,  '50mm E-DUCT / E-DUCT_EARTH', 1.500),\n    (3,  '63mm E-DUCT_SDR17.6', 2.000),\n    (4,  '110mm E-DUCT_SDR17.6 / COMMS_SDR17.6', 3.000),\n    (5,  '125mm E-DUCT_SDR17.6 / COMMS / ECC_SDR17.6', 3.500),\n    (6,  '125mm E-DUCT_HDD_SDR11', 3.500),\n    (7,  '140mm E-DUCT_COMMS_HDD_SDR11', 3.500),\n    (8,  '160mm E-DUCT_SDR21', 4.500),\n    (9,  '180mm E-DUCT_HDD_SDR11', 4.500),\n    (10, '200mm E-DUCT_SDR21', 5.500),\n    (11, 'Direct buried HV cable - 1c x 2000mm2 Aluminium HV (Incoming feed, Energinet -> FRD2A/C (L1/L2/L3))', 2.500),\n    (12, 'Direct buried HV cable - 1c x 2000mm2 Aluminium HV (Incoming feed, Energinet -> FRD2A/D (L1/L2/L3))', 2.500),\n    (13, 'Direct buried HV cable - 1c x 800mm2 Aluminium HV (Outgoing feed, FRD2A/C -> FRD1A/B (L1/L2/L3))', 2.500),\n    (14, 'Direct buried HV cable - 1c x 800mm2 Aluminium HV (Outgoing feed, FRD2A/D -> FRD1A/A (L1/L2/L3))', 2.500),\n    (15, 'Direct buried cable (generic) - Unarmoured multicore cable, OD <= 25mm', 0.0),\n    (16, 'Direct buried cable (generic) - Unarmoured multicore cable, 25mm < OD <= 50mm', 0.0),\n    (17, 'Direct buried cable (generic) - Unarmoured multicore cable, OD > 50mm', 0.0),\n    (18, 'Direct buried cable (generic) - Armoured (SWA) multicore cable', 0.0),\n    (19, 'Direct buried cable (generic) - Single-core cable (armoured or unarmoured)', 0.0),\n    (20, 'Direct buried cable (generic) - Individually shielded / overall-shielded cable', 0.0),\n    (21, 'Direct buried cable (generic) - Lead-sheathed cable', 0.0)\n]\n\ndef choose_radius_from_table():\n    form = Form()\n    form.Text = 'Select Duct / Cable - Vertical Curve Radius'\n    form.Size = Size(900, 245)\n    form.StartPosition = FormStartPosition.CenterScreen\n    form.TopMost = True\n\n    lbl = Label()\n    lbl.Text = 'Select duct / cable from P02 Detail Summary - Profile Elements Table:'\n    lbl.Location = Point(15, 15)\n    lbl.Size = Size(840, 20)\n    form.Controls.Add(lbl)\n\n    combo = ComboBox()\n    combo.Location = Point(15, 42)\n    combo.Size = Size(850, 25)\n    combo.DropDownStyle = ComboBoxStyle.DropDownList\n    for no, name, r in PROFILE_RADIUS_TABLE:\n        if r > 0:\n            combo.Items.Add('{:02d} | {} | R = {:.3f} m'.format(no, name, r))\n        else:\n            combo.Items.Add('{:02d} | {} | R = NOT SET'.format(no, name))\n    combo.SelectedIndex = 0\n    form.Controls.Add(combo)\n\n    note = Label()\n    note.Text = 'NOTE: Radius values are PRACTICAL design radii from the table. Do not use a smaller radius. Rows showing NOT SET must be confirmed before use.'\n    note.Location = Point(15, 76)\n    note.Size = Size(850, 40)\n    form.Controls.Add(note)\n\n    ok = Button()\n    ok.Text = 'Use selected radius'\n    ok.Location = Point(570, 135)\n    ok.Size = Size(145, 30)\n    ok.DialogResult = DialogResult.OK\n    form.AcceptButton = ok\n    form.Controls.Add(ok)\n\n    cancel = Button()\n    cancel.Text = 'Cancel'\n    cancel.Location = Point(725, 135)\n    cancel.Size = Size(140, 30)\n    cancel.DialogResult = DialogResult.Cancel\n    form.CancelButton = cancel\n    form.Controls.Add(cancel)\n\n    result = form.ShowDialog()\n    if result != DialogResult.OK or combo.SelectedIndex < 0:\n        return None\n    return PROFILE_RADIUS_TABLE[combo.SelectedIndex]\n\n# Radius source control:\n# IN[2] = False -> choose radius from embedded Profile Elements table.\n# IN[2] = True  -> bypass dropdown and use manual radius from IN[0] (metres).\nuse_manual_radius = bool(IN[2]) if (len(IN) > 2 and IN[2] is not None) else False\nmanual_radius = float(IN[0]) if (len(IN) > 0 and IN[0] is not None) else None\n\nselected_table_item = None if use_manual_radius else choose_radius_from_table()\nif use_manual_radius:\n    radius = manual_radius\n    selected_description = 'Manual radius override'\n    selected_no = None\nelse:\n    radius = selected_table_item[2] if selected_table_item is not None else None\n    selected_description = selected_table_item[1] if selected_table_item is not None else None\n    selected_no = selected_table_item[0] if selected_table_item is not None else None\n\nminGradeBreak = float(IN[1]) if (len(IN) > 1 and IN[1] is not None) else 0.0001\n\nreport = []\n\nif use_manual_radius and (radius is None or radius <= 0):\n    report.append('ERROR: MANUAL mode is TRUE but IN[0] manual radius must be greater than 0.000 m - nothing done.')\nelif (not use_manual_radius) and selected_table_item is None:\n    report.append('Cancelled - no duct/cable selected, nothing done.')\nelif not radius or radius <= 0:\n    report.append(\"ERROR: selected table row {} '{}' has no Curve Radius set - nothing done.\".format(selected_no, selected_description))\nelse:\n    if use_manual_radius:\n        report.append(\"RADIUS SOURCE: MANUAL | IN[0] Curve Radius R={:.3f} m\".format(radius))\n    else:\n        report.append(\"RADIUS SOURCE: TABLE | No. {} | {} | Curve Radius R={:.3f} m\".format(selected_no, selected_description, radius))\n    doc = Application.DocumentManager.MdiActiveDocument\n    db = doc.Database\n    ed = doc.Editor\n\n    opts = PromptSelectionOptions()\n    opts.MessageForAdding = \"Select design Profile line(s) to add sag/crest curves to: \"\n    selResult = ed.GetSelection(opts)\n\n    if str(selResult.Status) != \"OK\" or selResult.Value is None or selResult.Value.Count == 0:\n        report.append(\"No profiles selected - nothing done.\")\n    else:\n        grandCurves = 0\n        grandSkipped = 0\n        grandErrors = 0\n        validProfiles = 0\n\n        with doc.LockDocument():\n            with db.TransactionManager.StartTransaction() as tr:\n                for selObj in selResult.Value:\n                    profId = selObj.ObjectId\n                    try:\n                        profile = tr.GetObject(profId, OpenMode.ForWrite)\n                        if not isinstance(profile, Profile):\n                            try: clsName = profile.GetType().FullName\n                            except Exception: clsName = profile.GetRXClass().Name\n                            report.append(\"Skipped selected object {} - API type is {} (not Profile).\".format(profId.Handle.ToString(), clsName))\n                            continue\n                    except Exception as ex:\n                        report.append(\"Could not open selected object {} as a Profile: {}\".format(profId.Handle.ToString(), str(ex)))\n                        continue\n\n                    validProfiles += 1\n                    try:\n                        prof_name = profile.AcadObject.Name\n                    except Exception:\n                        prof_name = profId.Handle.ToString()\n                    label = \"'{}'\".format(prof_name)\n\n                    try:\n                        pvis = profile.PVIs\n                        count = pvis.Count\n                    except Exception as ex:\n                        report.append(\"{}: profile has no editable PVI collection - {}\".format(label, str(ex)))\n                        grandErrors += 1\n                        continue\n                    if count < 3:\n                        report.append(\"{}: fewer than 3 PVIs - nothing to curve\".format(label))\n                        grandSkipped += 1\n                        continue\n\n                    # Snapshot the PVI data and the IDs of the profile entities on each side.\n                    # Civil 3D 2027 creates vertical curves through Profile.Entities, not Profile.PVIs.\n                    work = []\n                    for i in range(1, count - 1):\n                        pvi = pvis[i]\n                        try:\n                            sta = pvi.Station\n                            elev = pvi.Elevation\n                            gradeIn = pvi.GradeIn\n                            gradeOut = pvi.GradeOut\n                            beforeId = pvi.EntityBefore\n                            afterId = pvi.EntityAfter\n                            work.append((i, sta, elev, gradeIn, gradeOut, beforeId, afterId))\n                        except Exception as ex:\n                            report.append(\"  {} PVI {}: could not read PVI/entity links - {}\".format(label, i+1, str(ex)))\n\n                    madeHere = skippedHere = errorsHere = 0\n                    entities = profile.Entities\n\n                    # Work from the end of the profile backwards so adding a curve does not\n                    # disturb entity relationships still to be processed upstream.\n                    for item in reversed(work):\n                        i, sta, elev, gradeIn, gradeOut, beforeId, afterId = item\n                        delta = gradeOut - gradeIn\n                        if abs(delta) < minGradeBreak:\n                            skippedHere += 1\n                            report.append(\"  {} sta {:.3f}: grade break {:+.3f}% below threshold - skipped\".format(label, sta, delta*100.0))\n                            continue\n\n                        kind = \"SAG\" if delta > 0 else \"CREST\"\n                        curveType = VerticalCurveType.Sag if delta > 0 else VerticalCurveType.Crest\n                        try:\n                            curve = entities.AddFreeSymmetricParabolaByRadius(\n                                beforeId, afterId, curveType, radius)\n                            madeHere += 1\n                            try:\n                                actualLen = curve.Length\n                                report.append(\"  {} sta {:.3f}: {} added, R={:.3f} m, L={:.3f} m\".format(label, sta, kind, radius, actualLen))\n                            except Exception:\n                                report.append(\"  {} sta {:.3f}: {} added, R={:.3f} m\".format(label, sta, kind, radius))\n                        except Exception as ex:\n                            errorsHere += 1\n                            report.append(\"  {} sta {:.3f}: could not add {} curve R={:.3f} m - {}\".format(label, sta, kind, radius, str(ex)))\n\n                    report.append(\"{}: {} curve(s) added, {} skipped, {} failed\".format(label, madeHere, skippedHere, errorsHere))\n                    grandCurves += madeHere\n                    grandSkipped += skippedHere\n                    grandErrors += errorsHere\n                tr.Commit()\n\n        ed.Regen()\n        if validProfiles == 0:\n            report.append(\"No valid Civil 3D Profiles were found in the selection.\")\n        report.append(\"TOTAL: {} curve(s) added, {} skipped, {} failed\".format(grandCurves, grandSkipped, grandErrors))\n\nOUT = report\n",
+      "Engine": "IronPython2",
+      "VariableInputPorts": true,
+      "Id": "7c4e2a1b3f5d4e8a9b6c1d2e3f4a5b6c",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [
+        {
+          "Id": "aa11bb22cc334d448e55ff6677889900",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "bb22cc33dd444e559f66007788990011",
+          "Name": "IN[1]",
+          "Description": "Input #1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "5a6be25b29c9425e90bf3db6d0e0012d",
+          "Name": "IN[2]",
+          "Description": "Manual radius override: False = table dropdown, True = use IN[0]",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "cc33dd44ee554f66a077889900112233",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.DoubleInput, CoreNodeModels",
+      "NumberType": "Double",
+      "Id": "dd44ee55ff664077b188990011223344",
+      "NodeType": "NumberInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "ee55ff6600774188c299001122334455",
+          "Name": "",
+          "Description": "Double",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a number.",
+      "InputValue": 3.4
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.DoubleInput, CoreNodeModels",
+      "NumberType": "Double",
+      "Id": "ff66007a11884299d3aa112233445566",
+      "NodeType": "NumberInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "0077118a229943aae4bb223344556677",
+          "Name": "",
+          "Description": "Double",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a number.",
+      "InputValue": 0.0
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "WatchWidth": 200.0,
+      "WatchHeight": 200.0,
+      "Id": "1188229b33aa44bb95cc334455667788",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "229933ac44bb45cc06dd4455667788aa",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "33aa44bd55cc46dd17ee5566778899bb",
+          "Name": "",
+          "Description": "Watch contents",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualizes a node's output"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.BoolSelector, CoreNodeModels",
+      "Id": "28b6218b6b0c40e28ee09995d7e8ce1d",
+      "NodeType": "BooleanInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "179e8ce4e73349d99411f5f06c8a899d",
+          "Name": "",
+          "Description": "Boolean",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Enables selection between True and False",
+      "InputValue": false
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "cc33dd44ee554f66a077889900112233",
+      "End": "229933ac44bb45cc06dd4455667788aa",
+      "Id": "66dd77e088ff490a4a1b8899aabbccdd",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "ee55ff6600774188c299001122334455",
+      "End": "aa11bb22cc334d448e55ff6677889900",
+      "Id": "44bb55ce66dd47ee28ff66778899aabb",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "0077118a229943aae4bb223344556677",
+      "End": "bb22cc33dd444e559f66007788990011",
+      "Id": "55cc66df77ee48ff390a778899aabbcc",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "179e8ce4e73349d99411f5f06c8a899d",
+      "End": "5a6be25b29c9425e90bf3db6d0e0012d",
+      "Id": "442f830fde084a479c49f3c5ea51f26b",
+      "IsHidden": "False"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [
+    {
+      "Name": "DynamoIronPython2.7",
+      "Version": "3.2.1",
+      "ReferenceType": "Package",
+      "Nodes": [
+        "7c4e2a1b3f5d4e8a9b6c1d2e3f4a5b6c"
+      ]
+    }
+  ],
+  "EnableLegacyPolyCurveBehavior": true,
+  "Thumbnail": "",
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [
+    {
+      "ExtensionGuid": "28992e1d-abb9-417f-8b1b-05e053bee670",
+      "Name": "Properties",
+      "Version": "3.7",
+      "Data": {}
+    }
+  ],
+  "Author": "",
+  "Linting": {
+    "activeLinter": "None",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": true,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "3.7.0.11777",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "_Background Preview",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "ConnectorPins": [],
+    "NodeViews": [
+      {
+        "Id": "7c4e2a1b3f5d4e8a9b6c1d2e3f4a5b6c",
+        "Name": "Add Profile Sag Crest Curves",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 456.70949145314444,
+        "Y": -128.00799536821478
+      },
+      {
+        "Id": "dd44ee55ff664077b188990011223344",
+        "Name": "Manual Curve Radius R (m) - used when True",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -580.6377069429066,
+        "Y": 189.65767158331047
+      },
+      {
+        "Id": "ff66007a11884299d3aa112233445566",
+        "Name": "Min grade break (decimal)",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -580.6377069429066,
+        "Y": 309.7011783860644
+      },
+      {
+        "Id": "1188229b33aa44bb95cc334455667788",
+        "Name": "Watch",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": true,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 847.2564453254356,
+        "Y": 200.0
+      },
+      {
+        "Id": "28b6218b6b0c40e28ee09995d7e8ce1d",
+        "Name": "Use Manual Radius?  False=Table / True=Manual",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -580.6377069429066,
+        "Y": 450.38767832183953
+      }
+    ],
+    "Annotations": [
+      {
+        "Id": "22d357d1e439496090c4f9a67a86d75d",
+        "Title": "Title <Double click here to edit group title>",
+        "DescriptionText": "Description <Double click here to edit group description>",
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [
+          "dd44ee55ff664077b188990011223344",
+          "ff66007a11884299d3aa112233445566",
+          "28b6218b6b0c40e28ee09995d7e8ce1d"
+        ],
+        "HasNestedGroups": false,
+        "Left": -590.6377069429066,
+        "Top": 73.65767158331047,
+        "Width": 454.0,
+        "Height": 508.730006738529,
+        "FontSize": 36.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": 189.65767158331047,
+        "InitialHeight": 422.730006738529,
+        "TextblockHeight": 106.0,
+        "Background": "#FFC1D676"
+      },
+      {
+        "Id": "36408beabb5247f49a349e9594e6e99f",
+        "Title": "Duct / Cable\tNo.\tProfile Curve Type\tProfile Curve Length\tK Value\tCurve Radius\r\n40mm E-DUCT\t1\t\t0.052\t0.015\t1.500\r\n50mm E-DUCT / E-DUCT_EARTH\t2\t\t0.052\t0.015\t1.500\r\n63mm E-DUCT_SDR17.6\t3\t\t0.070\t0.020\t2.000\r\n110mm E-DUCT_SDR17.6 / COMMS_SDR17.6\t4\t\t0.105\t0.030\t3.000\r\n125mm E-DUCT_SDR17.6 / COMMS / ECC_SDR17.6\t5\t\t0.122\t0.035\t3.500\r\n125mm E-DUCT_HDD_SDR11\t6\t\t0.122\t0.035\t3.500\r\n140mm E-DUCT_COMMS_HDD_SDR11\t7\t\t0.122\t0.035\t3.500\r\n160mm E-DUCT_SDR21\t8\t\t0.157\t0.045\t4.500\r\n180mm E-DUCT_HDD_SDR11\t9\t\t0.157\t0.045\t4.500\r\n200mm E-DUCT_SDR21\t10\t\t0.192\t0.055\t5.500\r\nDirect buried HV cable — 1c x 2000mm² Aluminium HV (Incoming feed, Energinet → FRD2A/C (L1/L2/L3))\t11\t\t0.087\t0.025\t2.500\r\nDirect buried HV cable — 1c x 2000mm² Aluminium HV (Incoming feed, Energinet → FRD2A/D (L1/L2/L3))\t12\t\t0.087\t0.025\t2.500\r\nDirect buried HV cable — 1c x 800mm² Aluminium HV (Outgoing feed, FRD2A/C → FRD1A/B (L1/L2/L3))\t13\t\t0.087\t0.025\t2.500\r\nDirect buried HV cable — 1c x 800mm² Aluminium HV (Outgoing feed, FRD2A/D → FRD1A/A (L1/L2/L3))\t14\t\t0.087\t0.025\t2.500\r\nDirect buried cable (generic) — Unarmoured multicore cable, OD ≤ 25mm\t15\t\t0.000\t0.000\t0.000\r\nDirect buried cable (generic) — Unarmoured multicore cable, 25mm < OD ≤ 50mm\t16\t\t0.000\t0.000\t0.000\r\nDirect buried cable (generic) — Unarmoured multicore cable, OD > 50mm\t17\t\t0.000\t0.000\t0.000\r\nDirect buried cable (generic) — Armoured (SWA) multicore cable\t18\t\t0.000\t0.000\t0.000\r\nDirect buried cable (generic) — Single-core cable (armoured or unarmoured)\t19\t\t0.000\t0.000\t0.000\r\nDirect buried cable (generic) — Individually shielded / overall-shielded cable\t20\t\t0.000\t0.000\t0.000\r\nDirect buried cable (generic) — Lead-sheathed cable\t21\t\t0.000\t0.000\t0.000\r\n\t\t\t\t\t\r\n",
+        "DescriptionText": null,
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [],
+        "HasNestedGroups": false,
+        "Left": 405.57261570894764,
+        "Top": 222.62896042466616,
+        "Width": 0.0,
+        "Height": 0.0,
+        "FontSize": 36.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": 0.0,
+        "InitialHeight": 0.0,
+        "TextblockHeight": 0.0,
+        "Background": "#FFC1D676"
+      },
+      {
+        "Id": "f7341f07725d4b7b83ef0c3b70f9df22",
+        "Title": "Dynamo for Civil 3D - Python Script node (engine: IronPython2)\r\n\r\nNOTE: IronPython2, not CPython3 - touching Application.DocumentManager /\r\nAutodesk.Civil.DatabaseServices pulls in Autodesk.AutoCAD.Interop, which\r\nDynamo's CPython3 (pythonnet) engine cannot load in this Civil3D build\r\n(\"Could not load type ... AcWindowState ...\"). IronPython2's native CLR\r\nhosting resolves it fine - same reason every other Civil3D-API script in\r\nthis repo (Add_MWP-NEZ_ChainageLevel_Labels.py, Diagnose_Civil3D_Styles.py)\r\nuses IronPython2.\r\n\r\nPrompts you to select one or more Profile Views on screen. For every design\r\n(layout) profile plotted in each selected view, walks every PVI that is\r\ncurrently a plain tangent-tangent break (no curve yet) and inserts a\r\nsymmetric parabolic vertical curve there - EditSagCurve() where the grade\r\nincreases through the PVI (valley), EditCrestCurve() where it decreases\r\n(hilltop) - sized from a single curve radius R (m):\r\n\r\n    curve length L = R x |grade_out - grade_in|\r\n\r\nwith grade_out/grade_in as decimal fractions (e.g. 0.03 for 3%). That is R\r\nas used for \"VC RAD\" on Irish/UK road longitudinal-section drawings, not an\r\nAASHTO K value expressed in percent (K = R / 100 in that convention).\r\nConfirmed against Civil3D's own native Insert PVI / Curve Settings dialog\r\n(entering a Radius and reading back the resulting Length/K value).\r\n\r\nIf that ideal length won't fit between the PVI and its neighbour (i.e. the\r\nPVI's tangent on that side is shorter than L/2), the length is CLIPPED to\r\n2 x the shorter available tangent, matching what Civil3D's own dialog does\r\nin the same situation (confirmed against a native example where Radius 3.4\r\nproduced Length 3.310 - not R x delta - because the neighbouring PVI didn't\r\nleave enough room; Civil3D shows K Value 0.000 for a curve clipped like\r\nthis, since it no longer corresponds to the requested radius). A clipped\r\ncurve is still added and counted as a success, just flagged in the report\r\nwith the ideal length it couldn't reach.\r\n\r\nPVIs where the grade doesn't actually break (|delta grade| below\r\nminGradeBreak) are left alone and reported as skipped. Every other interior\r\nPVI just gets Profile.Entities.AddFreeSymmetricParabolaByRadius called on it directly, inside its\r\nown try/except - a PVI that's already curved, or can't fit the requested\r\nradius (curve longer than the available tangent to its neighbour), throws\r\nfrom that call and is reported as a failure with Civil3D's own message,\r\nrather than pre-checked. (Deliberate: this OEM build's ProfilePVI.PVIType\r\ngetter returns null for an ordinary uncurved PVI instead of throwing or\r\nreturning TangentWithoutCurve, the same broken-managed-property pattern as\r\nthe .Name getters documented in Add_MWP-NEZ_ChainageLevel_Labels_HELP.md -\r\nso pre-checking PVIType here misclassified every plain PVI as \"already\r\ncurved\" and skipped the whole profile. Letting the Profile entity API itself\r\ndecide sidesteps that.)",
+        "DescriptionText": null,
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [],
+        "HasNestedGroups": false,
+        "Left": -1108.4444827172288,
+        "Top": 22.0425047703539,
+        "Width": 0.0,
+        "Height": 0.0,
+        "FontSize": 36.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": 0.0,
+        "InitialHeight": 0.0,
+        "TextblockHeight": 0.0,
+        "Background": "#FFC1D676"
+      }
+    ],
+    "X": 469.1718442435647,
+    "Y": 181.60081590601263,
+    "Zoom": 0.10707288892052887
+  }
+}

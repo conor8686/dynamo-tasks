@@ -1,0 +1,284 @@
+{
+  "Uuid": "818729ec-ad52-43a9-89e5-5dd41fdcfe86",
+  "IsCustomNode": false,
+  "Description": "Single/multiple XY+Z export. Multiple selection accepts alignments, profile views and layout profiles. Watch messages identify skipped profile types, alignments with no profiles and per-profile export results.",
+  "Name": "C11.206 Civil3D_Export_Alignment_Selection_Diagnostics",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [
+    {
+      "Id": "67971a788ec54c0392693f6a99b74baf",
+      "Name": "Station_Interval",
+      "Type": "number",
+      "Type2": "number",
+      "Value": "0",
+      "NumberType": "Double",
+      "Description": "Creates a number."
+    },
+    {
+      "Id": "b09d8cbbd9924f52ac2790f41fc7823b",
+      "Name": "Multiple selection (True) / Single profile (False)",
+      "Type": "boolean",
+      "Type2": "boolean",
+      "Value": "true",
+      "Description": "Choose multiple profile views or one layout profile."
+    }
+  ],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "# C11.206 - single or multiple selection; actual profile entities\n# Window-select Profile View(s); other selected objects are ignored.\n# Exports ONLY Civil 3D UI Profile Type = Layout (API ProfileType.FG).\n# Station_Interval = 0.0: geometry-critical stations only; >0: also regular stations.\n# Output: [profile names, Z report paths, XY report paths, messages].\n\n# ExportProfileReport v3.7 - Profile View Window Select - LAYOUT / API FG ONLY\nimport sys\nimport System\nimport clr\nclr.AddReference('AcMgd')\nclr.AddReference('AcDbMgd')\nclr.AddReference('AcCoreMgd')\nclr.AddReference('AeccDbMgd')\nclr.AddReference('System.Windows.Forms')\n\nimport System.Windows.Forms as WinForms\nimport Autodesk.AutoCAD.ApplicationServices as AcAppServ\nimport Autodesk.AutoCAD.DatabaseServices as AcDb\nimport Autodesk.AutoCAD.EditorInput as AcEd\nimport Autodesk.Civil.ApplicationServices as CivAppServ\nimport Autodesk.Civil.DatabaseServices as CivDb\n\n\ndef _signedPlanRadius(radius, p0, pm, p1):\n    # The receiving Revit graph expects left-positive, right-negative.\n    # Infer orientation from actual XY geometry, not the unsigned API Radius.\n    if any(v is None for p in (p0, pm, p1) for v in p):\n        raise ValueError(\"Cannot determine arc direction: missing XY coordinates\")\n    cross = ((pm[0] - p0[0]) * (p1[1] - pm[1]) -\n             (pm[1] - p0[1]) * (p1[0] - pm[0]))\n    if abs(cross) < 1e-12:\n        raise ValueError(\"Cannot determine arc direction: collinear arc samples\")\n    return abs(radius) if cross > 0.0 else -abs(radius)\n\ndef _arcPlanRadius(arc, pointAt, start, end):\n    # Civil 3D stores direction on the arc itself. Short/near-straight arcs\n    # can have collinear sampled coordinates at drawing precision.\n    radius = abs(float(_safeProp(arc, \"Radius\")))\n    try:\n        clockwise = _safeProp(arc, \"Clockwise\")\n    except Exception:\n        # Compatibility fallback only when the native property is unavailable.\n        return _signedPlanRadius(radius, pointAt(start),\n                                 pointAt((start + end) * 0.5), pointAt(end))\n    if clockwise is None:\n        raise ValueError(\"Arc Clockwise property is unavailable at {0}-{1}\".format(start, end))\n    return -radius if bool(clockwise) else radius\n\ndef _reportStations(start, end, interval, segments, pvis):\n    # Keep exact critical stations, even when a regular sample is very close.\n    import math\n    step = 3.0 if interval is None or interval == '' else float(interval)\n    if math.isnan(step) or math.isinf(step) or step < 0.0:\n        raise ValueError(\"Station_Interval must be finite and zero or positive\")\n    if end <= start:\n        raise ValueError(\"Profile end station must exceed its start station\")\n    critical = [start, end]\n    critical.extend(s for s, e in pvis if start < s < end)\n    for a, b, kind, radius in segments:\n        critical.extend(s for s in (a, b) if start < s < end)\n        lo, hi = max(start, a), min(end, b)\n        if kind == 'Arc' and hi > lo:\n            critical.append((lo + hi) * 0.5)\n    stations = []\n    for s in sorted(critical):\n        if not stations or s - stations[-1] > 1e-8:\n            stations.append(s)\n    if step > 0.0:\n        count = int(math.ceil((end - start) / step))\n        if count > 1000000:\n            raise ValueError(\"Station_Interval would create over one million points\")\n        regular = [start + i * step for i in range(1, count)]\n        import bisect\n        for s in regular:\n            k = bisect.bisect_left(stations, s)\n            if s < end and (k == 0 or abs(s - stations[k-1]) > 1e-8) and (k == len(stations) or abs(stations[k] - s) > 1e-8):\n                stations.insert(k, s)\n    return stations\n\ndef _segmentAt(station, segments):\n    # Outgoing segment owns a shared boundary: PC=Curve and PT=Line.\n    for index, seg in enumerate(segments):\n        a, b, kind, radius = seg\n        if a - 1e-8 <= station < b - 1e-8:\n            return seg\n        if index == len(segments) - 1 and abs(station - b) <= 1e-8:\n            return seg\n    raise ValueError(\"No horizontal entity at station {0}\".format(station))\n\nstationInterval = IN[0]\nmultipleSelection = bool(IN[1]) if len(IN) > 1 else True\n\ndoc = AcAppServ.Application.DocumentManager.MdiActiveDocument\ndb = doc.Database\ned = doc.Editor\n\ndef _safeCall(obj, methodName, args=None):\n    try:\n        m = getattr(obj, methodName)\n        return m(*(args or []))\n    except AttributeError:\n        mi = obj.GetType().GetMethod(methodName)\n        if mi is None:\n            raise\n        if args:\n            return mi.Invoke(obj, System.Array[object](args))\n        return mi.Invoke(obj, None)\n\ndef _safeProp(obj, propName):\n    try:\n        return getattr(obj, propName)\n    except AttributeError:\n        pi = obj.GetType().GetProperty(propName)\n        if pi is None:\n            raise\n        return pi.GetValue(obj, None)\n\ndef _safeIndex(obj, i):\n    try:\n        return obj[i]\n    except (AttributeError, TypeError):\n        mi = obj.GetType().GetMethod(\"get_Item\")\n        if mi is None:\n            raise\n        return mi.Invoke(obj, System.Array[object]([i]))\n\ndef _formatStation(station):\n    sign = \"-\" if station < 0 else \"\"\n    s = abs(station)\n    major = int(s // 1000)\n    minor = s - major * 1000\n    return \"{0}{1}+{2:06.2f}\".format(sign, major, minor)\n\ndef _bearingString(dx, dy):\n    ang = System.Math.Atan2(dx, dy)\n    if ang < 0:\n        ang += 2 * System.Math.PI\n    degTotal = ang * 180.0 / System.Math.PI\n    d = int(degTotal)\n    remMin = (degTotal - d) * 60.0\n    m = int(remMin)\n    s = (remMin - m) * 60.0\n    return \"{0}\\u00b0 {1}' {2:.3f}\\\"\".format(d, m, s)\n\ndef _formatGradient(gradVal):\n    if gradVal is None or gradVal == \"\":\n        return \"\"\n    return \"{0:.2f} %\".format(gradVal * 100)\n\n\n# WINDOW-SELECTION VERSION v3.5 - PROFILE VIEW -> ALIGNMENT -> FG (UI \"Layout\")\n# Civil 3D Properties displays design profiles as \"Profile Type = Layout\".\n# In the .NET API the corresponding ProfileType enum member is FG (value 1), NOT \"Layout\".\n# Window/crossing-select Profile View(s); extra selected objects are ignored.\nprofileIds = []\nselectionNotes = []\nselectedProfileViews = []\nignoredCount = 0\n\n\ndef _isLayoutProfile(pobj):\n    try:\n        pt = _safeProp(pobj, \"ProfileType\")\n        # Civil 3D API: EG=0, FG=1, Superimposed=2, File=3,\n        # CorridorFeature=4, OffsetProfile=6, CurbReturnProfile=7.\n        # UI \"Layout\" == API FG.\n        try:\n            if int(pt) == 1:\n                return True\n        except Exception:\n            pass\n        s = str(pt).strip().lower()\n        return s == \"fg\" or s.endswith(\".fg\")\n    except Exception:\n        return False\n\n\ndef _addProfileIfLayout(profileId, tr, sourceNote):\n    pname = str(profileId)\n    try:\n        pobj = tr.GetObject(profileId, AcDb.OpenMode.ForRead)\n        pname = str(_safeProp(pobj, \"Name\"))\n        if not clr.GetClrType(CivDb.Profile).IsAssignableFrom(pobj.GetType()):\n            selectionNotes.append(\"SKIPPED {}: not a profile; from {}\".format(pname,sourceNote))\n            return False\n        if not _isLayoutProfile(pobj):\n            selectionNotes.append(\"SKIPPED {}: ProfileType={} (only Layout/FG exported); from {}\".format(pname,_safeProp(pobj,\"ProfileType\"),sourceNote))\n            return False\n        if profileId not in profileIds:\n            profileIds.append(profileId)\n            selectionNotes.append(\"SELECTED {}: from {}\".format(pname,sourceNote))\n        return True\n    except Exception as ex:\n        selectionNotes.append(\"SELECTION ERROR {} from {}: {}\".format(pname,sourceNote,ex))\n        return False\n\ndef _addAlignmentProfiles(alignment, tr, sourceNote):\n    name = str(_safeProp(alignment,\"Name\"))\n    pids = list(_safeCall(alignment,\"GetProfileIds\"))\n    before = len(profileIds)\n    if not pids:\n        selectionNotes.append(\"NO PROFILES: alignment {} ({})\".format(name,sourceNote))\n    for pid in pids:\n        _addProfileIfLayout(pid,tr,\"alignment \" + name + \"; \" + sourceNote)\n    selectionNotes.append(\"ALIGNMENT {}: {} attached profiles; {} newly selected Layout profiles\".format(name,len(pids),len(profileIds)-before))\n\ndef _selectExportObjects(editor, multiple):\n    if multiple:\n        options = AcEd.PromptSelectionOptions()\n        options.MessageForAdding = \"\\nWINDOW/CROSSING select Alignments, Profile Views or layout profiles, then press ENTER: \"\n        result = editor.GetSelection(options)\n        return list(result.Value.GetObjectIds()) if result.Status == AcEd.PromptStatus.OK else []\n    options = AcEd.PromptEntityOptions(\"\\nSelect ONE layout profile curve to export: \")\n    options.SetRejectMessage(\"\\nSelect a Civil 3D Profile curve, not the profile-view grid.\")\n    options.AddAllowedClass(clr.GetClrType(CivDb.Profile), True)\n    result = editor.GetEntity(options)\n    return [result.ObjectId] if result.Status == AcEd.PromptStatus.OK else []\n\nselectedObjectIds = _selectExportObjects(ed, multipleSelection)\nif selectedObjectIds:\n    with db.TransactionManager.StartOpenCloseTransaction() as selTr:\n        for oid in selectedObjectIds:\n            try:\n                obj = selTr.GetObject(oid, AcDb.OpenMode.ForRead)\n                objType = obj.GetType()\n\n                if clr.GetClrType(CivDb.ProfileView).IsAssignableFrom(objType):\n                    selectedProfileViews.append(oid)\n                    try:\n                        pvName = str(_safeProp(obj, \"Name\"))\n                    except Exception:\n                        pvName = \"Profile View\"\n\n                    # Robust route: ProfileView.AlignmentId -> Alignment.GetProfileIds().\n                    # This avoids depending on GraphOverrides, which did not expose the\n                    # profiles reliably in the previous version.\n                    try:\n                        alignmentId = _safeProp(obj, \"AlignmentId\")\n                        alignment = selTr.GetObject(alignmentId, AcDb.OpenMode.ForRead)\n                        _addAlignmentProfiles(alignment, selTr, \"Profile View: \" + pvName)\n                    except Exception as ex:\n                        selectionNotes.append(\"WARNING - could not read alignment profiles from {0}: {1}\".format(pvName, ex))\n\n                elif clr.GetClrType(CivDb.Alignment).IsAssignableFrom(objType):\n                    _addAlignmentProfiles(obj, selTr, \"direct alignment selection\")\n                elif clr.GetClrType(CivDb.Profile).IsAssignableFrom(objType):\n                    # Directly selected profile is also allowed, but still only FG/Layout.\n                    _addProfileIfLayout(oid, selTr, \"direct selection\")\n                else:\n                    ignoredCount += 1\n            except Exception as ex:\n                ignoredCount += 1\n                selectionNotes.append(\"SELECTION ERROR for object {}: {}\".format(oid,ex))\n        selTr.Commit()\n\nprofileNames = []\nentitiesReportPaths = []\nstationsReportPaths = []\nerrors = []\nif not profileIds:\n    errors.append('No Layout profiles found. Civil 3D UI \"Layout\" corresponds to API ProfileType.FG (value 1). Single mode: select the layout profile curve. Multiple mode: window-select Profile Views or layout profiles. Other profile types are ignored.')\n    errors.append(\"Selected Profile Views: {0}; ignored other objects: {1}\".format(len(selectedProfileViews), ignoredCount))\n\nif profileIds:\n    defaultDir = System.IO.Path.GetDirectoryName(db.Filename)\n    outDir = defaultDir\n    folderDialog = WinForms.FolderBrowserDialog()\n    folderDialog.Description = \"Select ONE folder to save ALL Profile Report Excel files\"\n    folderDialog.SelectedPath = defaultDir\n    if folderDialog.ShowDialog() == WinForms.DialogResult.OK and folderDialog.SelectedPath:\n        outDir = folderDialog.SelectedPath\n    else:\n        profileIds = []\n        errors.append(\"Cancelled - no output folder selected; no reports written.\")\n\nfor profileId in profileIds:\n    profileName = None\n    entitiesReportPath = None\n    stationsReportPath = None\n    errorMsg = None\n    reportErrors = []\n    with db.TransactionManager.StartTransaction() as tr:\n        try:\n            profileEntity = tr.GetObject(profileId, AcDb.OpenMode.ForRead)\n            profileName = profileEntity.Name\n    \n            alignmentId = _safeProp(profileEntity, \"AlignmentId\")\n            alignmentEntity = tr.GetObject(alignmentId, AcDb.OpenMode.ForRead)\n            alignmentName = _safeProp(alignmentEntity, \"Name\")\n    \n            pointLocationMethod = None\n            for m in alignmentEntity.GetType().GetMethods():\n                if m.Name == \"PointLocation\":\n                    ps = m.GetParameters()\n                    if len(ps) == 4 and ps[0].ParameterType.Name == \"Double\" and ps[1].ParameterType.Name == \"Double\":\n                        pointLocationMethod = m\n                        break\n    \n            def _pointAt(station):\n                plArgs = System.Array[object]([station, 0.0, 0.0, 0.0])\n                try:\n                    pointLocationMethod.Invoke(alignmentEntity, plArgs)\n                except Exception as invokeEx:\n                    # .NET reflection wraps the real error as TargetInvocationException -\n                    # unwrap InnerException to get the actual Civil3D message (e.g. a\n                    # station outside the alignment's range) instead of the generic\n                    # \"Exception has been thrown by the target of an invocation.\"\n                    inner = getattr(invokeEx, \"InnerException\", None)\n                    detail = inner.Message if inner is not None else str(invokeEx)\n                    reportErrors.append(\"PointLocation failed at station {0}: {1}\".format(station, detail))\n                    return None, None\n                return float(plArgs[2]), float(plArgs[3])\n    \n            alignSegments = []\n            try:\n                alignEntities = _safeProp(alignmentEntity, \"Entities\")\n                alignEntityCount = _safeProp(alignEntities, \"Count\")\n                for i in range(alignEntityCount):\n                    aEnt = _safeCall(alignEntities, \"GetEntityByOrder\", [i])\n                    aTypeName = str(_safeProp(aEnt, \"EntityType\"))\n                    aStart = float(_safeProp(aEnt, \"StartStation\"))\n                    aEnd = float(_safeProp(aEnt, \"EndStation\"))\n                    aRadius = None\n                    if aTypeName == \"Arc\":\n                        aRadius = _arcPlanRadius(aEnt, _pointAt, aStart, aEnd)\n                    elif aTypeName != \"Line\":\n                        raise ValueError(\"Unsupported horizontal entity: \" + aTypeName)\n                    alignSegments.append((aStart, aEnd, aTypeName, aRadius))\n            except Exception as ex:\n                raise ValueError(\"Alignment entities read failed: {0}\".format(ex))\n            alignSegments.sort(key=lambda seg: seg[0])\n            if not alignSegments:\n                raise ValueError(\"No horizontal alignment entities found\")\n            # Horizontal alignment limits.  A Civil 3D profile can occasionally\n            # report a solved entity endpoint a tiny distance beyond these limits.\n            # Trim profile geometry to the actual alignment extents so PointLocation\n            # is never asked for an invalid station.\n            alignStart = float(alignSegments[0][0])\n            alignEnd = float(alignSegments[-1][1])\n    \n            def _alignInfoAt(station):\n                aStart, aEnd, aTypeName, aRadius = _segmentAt(station, alignSegments)\n                if aTypeName == \"Arc\":\n                    return \"Curve\", \"Arc\", aRadius\n                return \"Line\", \"Line\", \"Infinity\"\n\n            # Read actual solved entities, never connect PVIs as a substitute.\n            profileEntities = list(_safeProp(profileEntity, \"Entities\"))\n            profileEntities.sort(key=lambda e: float(_safeProp(e, \"StartStation\")))\n            if not profileEntities:\n                raise ValueError(\"The selected profile has no solved entities\")\n            def optional(e, name, default=\"\"):\n                try: return _safeProp(e, name)\n                except Exception: return default\n            def _elevationAt(station):\n                return float(_safeCall(profileEntity, \"ElevationAt\", [float(station)]))\n            profileSegments = []\n            for entity in profileEntities:\n                rawS = float(_safeProp(entity, \"StartStation\"))\n                rawT = float(_safeProp(entity, \"EndStation\"))\n                kind = str(_safeProp(entity, \"EntityType\"))\n                label = {\"Tangent\":\"Tangent\", \"Circular\":\"Circular Curve\",\n                         \"ParabolaSymmetric\":\"Parabolic Curve\",\n                         \"ParabolaAsymmetric\":\"Asymmetric Parabolic Curve\"}.get(kind)\n                if label is None:\n                    raise ValueError(\"Unsupported profile entity: \" + kind)\n                # Use only the portion for which the parent alignment has XY geometry.\n                s = max(rawS, alignStart)\n                t = min(rawT, alignEnd)\n                if s > rawS + 1e-8 or t < rawT - 1e-8:\n                    reportErrors.append(\"Trimmed profile entity {0} from {1}-{2} to alignment range {3}-{4}\".format(\n                        kind, rawS, rawT, s, t))\n                if t - s <= 1e-9:\n                    reportErrors.append(\"Skipped profile entity {0} outside/at alignment limit: {1}-{2}\".format(kind, rawS, rawT))\n                    continue\n                profileSegments.append((s,t,label,entity))\n            if not profileSegments:\n                raise ValueError(\"No profile entities overlap the horizontal alignment range\")\n            startStation=profileSegments[0][0]\n            endStation=profileSegments[-1][1]\n            def _gradientAt(station):\n                h=1e-6\n                a=max(startStation,station-h); b=min(endStation,station+h)\n                return (_elevationAt(b)-_elevationAt(a))/(b-a) if b>a else 0.0\n            def _profileInfoAt(station):\n                return _segmentAt(station,profileSegments)\n            # Compatibility with the shared critical-station collector.\n            pviList=[]\n            for s,t,label,entity in profileSegments:\n                pviList.extend([(s,_elevationAt(s)),(t,_elevationAt(t))])\n                if label != \"Tangent\":\n                    mid=(s+t)*0.5\n                    pviList.append((mid,_elevationAt(mid)))\n            pviList.sort()\n\n            drawingName = System.IO.Path.GetFileNameWithoutExtension(db.Filename)\n            safeName = \"\".join(c if c.isalnum() or c in \" _-\" else \"_\" for c in profileName)\n            safeAlignName = \"\".join(c if c.isalnum() or c in \" _-\" else \"_\" for c in alignmentName)\n            if not System.IO.Directory.Exists(outDir):\n                System.IO.Directory.CreateDirectory(outDir)\n    \n            entitiesReportPath = System.IO.Path.Combine(outDir, \"{0} - {1} - {2}z.xlsx\".format(drawingName, safeAlignName, safeName))\n            stationsReportPath = System.IO.Path.Combine(outDir, \"{0} - {1} - {2}xy.xlsx\".format(drawingName, safeAlignName, safeName))\n    \n            entHeader = [\"Entity Index\", \"Entity Type\", \"Tangency Constraint\", \"Parameter Constraint\", \"Length\",\n                         \"Start Station\", \"End Station\", \"Start Easting\", \"Start Northing\", \"Start Elevation\",\n                         \"End Easting\", \"End Northing\", \"End Elevation\", \"Gradient In\", \"Gradient Out\",\n                         \"A (Gradient Change)\", \"Curve Type\", \"Curve Radius\", \"K Value\", \"M Value\",\n                         \"PVI Station\", \"PVI Elevation\", \"PVI Tangent Offset\", \"High/Low Point Station\",\n                         \"High/Low Point Elevation\", \"Asymmetric Length 1\", \"Asymmetric Length 2\",\n                         \"Through Point 1 Station\", \"Through Point 1 Elevation\", \"Through Point 2 Station\",\n                         \"Through Point 2 Elevation\", \"Through Point 3 Station\", \"Through Point 3 Elevation\",\n                         \"Gradient At Through Point 1\", \"Gradient At Through Point 2\", \"Highest Design Speed\",\n                         \"Violations\", \"Start Design Speed\", \"End Design Speed\"]\n    \n            entRows = []\n            for i,(s1,s2,label,entity) in enumerate(profileSegments):\n                east1,north1=_pointAt(s1); east2,north2=_pointAt(s2)\n                if None in (east1,north1,east2,north2):\n                    raise ValueError(\"Cannot locate profile entity endpoints\")\n                # Evaluate elevations at the exported (possibly trimmed) stations.\n                e1=_elevationAt(s1)\n                e2=_elevationAt(s2)\n                # Safe gradient calculation - protects against zero-length profile entities\n                segLength=abs(s2-s1)\n                gi=optional(entity,\"GradeIn\",None)\n                go=optional(entity,\"GradeOut\",None)\n                if segLength > 1e-9:\n                    h=min(1e-6,segLength*0.01)\n                    if gi is None: gi=(_elevationAt(s1+h)-e1)/h\n                    if go is None: go=(e2-_elevationAt(s2-h))/h\n                else:\n                    # Degenerate/zero-length solved profile entity\n                    if gi is None: gi=_gradientAt(s1)\n                    if go is None: go=gi\n                gi=float(gi); go=float(go)\n                rawradius=optional(entity,\"Radius\",None)\n                curveType=(\"Sag\" if go>gi else \"Crest\") if label!=\"Tangent\" else \"\"\n                signedradius=(-abs(float(rawradius)) if curveType==\"Sag\" else abs(float(rawradius))) if rawradius is not None else \"\"\n                constraint=str(optional(entity,\"Constraint2\"))\n                if \"radius\" in constraint.lower(): constraint=\"Radius\"\n                row=[i+1,label,str(optional(entity,\"Constraint1\")),constraint,\n                     float(_safeProp(entity,\"Length\")),s1,s2,east1,north1,e1,\n                     east2,north2,e2,_formatGradient(gi),_formatGradient(go),\n                     _formatGradient(go-gi),curveType,signedradius,\n                     optional(entity,\"K\"),optional(entity,\"M\")]\n                row += [\"\"]*(len(entHeader)-len(row))\n                entRows.append(row)\n\n            stnHeader = [\"Point Index\", \"Station\", \"Easting\", \"Northing\", \"Elevation\", \"Bearing\", \"Alignment Radius\",\n                         \"Entity Type\", \"Sub-Entity Type\", \"Gradient\", \"Profile Radius\", \"Profile Entity\",\n                         \"Alignment Point Code\", \"Profile Point Code\", \"Design Speed\", \"Compare to\",\n                         \"Compared Station\", \"Compared Easting\", \"Compared Northing\", \"Compared Elevation\",\n                         \"Compared Offset (XY)\", \"Compared Offset (Z)\", \"Compared Slope\", \"Rail Pivot Type\",\n                         \"Applied Cant\", \"Left Rail Elevation Difference\", \"Right Rail Elevation Difference\",\n                         \"Alignment Sub-Entity Length\", \"Profile Entity Length\"]\n    \n            stations = _reportStations(startStation, endStation, stationInterval,\n                                       alignSegments, pviList)\n\n            stnRows = []\n            idx = 1\n            for st in stations:\n                elev = _elevationAt(st)\n                grad = _gradientAt(st)\n                east, north = _pointAt(st)\n                east2, north2 = _pointAt(min(st + 0.01, endStation))\n                if east is not None and north is not None and east2 is not None and north2 is not None:\n                    bearing = _bearingString(east2 - east, north2 - north)\n                else:\n                    bearing = \"\"\n    \n                entType, subEntType, alignRadius = _alignInfoAt(st)\n                pCode = \"Start Point\" if idx == 1 else (\"End Point\" if st == endStation else None)\n                ps,pe,profileLabel,profileObject = _profileInfoAt(st)\n                profileRadius=optional(profileObject,\"Radius\",\"Infinity\")\n                row = [idx, float(st),\n                       (round(east, 4) if east is not None else \"\"), (round(north, 4) if north is not None else \"\"), elev,\n                       bearing, alignRadius, entType, subEntType,\n                       _formatGradient(grad), profileRadius, profileLabel,\n                       (\"PC\" if any(abs(st - a) <= 1e-8 and kind == \"Arc\" for a, b, kind, r in alignSegments)\n                        else \"PT\" if any(abs(st - b) <= 1e-8 and kind == \"Arc\" for a, b, kind, r in alignSegments)\n                        else pCode), (\"PVC\" if profileLabel!=\"Tangent\" and abs(st-ps)<1e-8 else pCode)]\n                row += [\"\"] * (len(stnHeader) - len(row))\n                stnRows.append(row)\n                idx += 1\n    \n            styleNameVal = \"MWP-Existing Ground\"\n            allElevs = [e for _, e in pviList]\n            summaryHeader = [\"Alignment/Profile Name\", \"Description\", \"Object Style\", \"Type\", \"Site\",\n                             \"Start Station\", \"End Station\", \"Length\", \"Entities\", \"Minimum Elevation\",\n                             \"Maximum Elevation\", \"Offset\", \"Design Check Set\", \"Property Sets\"]\n            summaryValues = [\"{0} - {1}\".format(alignmentName, profileName), \"<None>\", styleNameVal, \"Layout Profile\", \"<None>\",\n                             float(startStation), float(endStation),\n                             round(endStation - startStation, 4), len(profileSegments),\n                             round(min(allElevs), 3), round(max(allElevs), 3), 0, \"\", 0]\n    \n            excelType = System.Type.GetTypeFromProgID(\"Excel.Application\")\n            excelApp = System.Activator.CreateInstance(excelType)\n            excelApp.Visible = False\n            excelApp.DisplayAlerts = False\n            try:\n                def _writeWorkbook(path, sheetName, header, rows):\n                    wb = excelApp.Workbooks.Add()\n                    while wb.Worksheets.Count > 2:\n                        wb.Worksheets[wb.Worksheets.Count].Delete()\n                    while wb.Worksheets.Count < 2:\n                        wb.Worksheets.Add(System.Reflection.Missing.Value, wb.Worksheets[wb.Worksheets.Count])\n    \n                    headerSheet = wb.Worksheets[1]\n                    headerSheet.Name = \"Report Header\"\n                    headerInfoRows = [\n                        [\"Drawing:\", System.IO.Path.GetFileName(db.Filename)],\n                        [\"Drawing Path:\", db.Filename],\n                        [\"Parent Alignment:\", alignmentName],\n                        [\"Report Date:\", System.DateTime.Now.ToString(\"dd/MM/yyyy\")],\n                        [\"Reported By:\", System.Environment.UserName],\n                        [\"Report Version:\", \"1.0 (-)\"],\n                    ]\n                    for r in range(len(headerInfoRows)):\n                        headerSheet.Cells(r + 1, 1).Value2 = headerInfoRows[r][0]\n                        headerSheet.Cells(r + 1, 2).Value2 = headerInfoRows[r][1]\n                    headerSheet.Columns.AutoFit()\n    \n                    sheet = wb.Worksheets[2]\n                    sheet.Name = sheetName[:31]\n    \n                    sheet.Cells(1, 1).Value2 = profileName\n                    sheet.Cells(1, 1).Font.Bold = True\n    \n                    summaryLabelRange = sheet.Range(sheet.Cells(2, 1), sheet.Cells(2, len(summaryHeader)))\n                    summaryLabelRange.Value2 = System.Array[object](summaryHeader)\n                    summaryLabelRange.Font.Bold = True\n    \n                    summaryValueRange = sheet.Range(sheet.Cells(3, 1), sheet.Cells(3, len(summaryValues)))\n                    summaryValueRange.Value2 = System.Array[object](summaryValues)\n    \n                    tableTopRow = 6\n                    headerRange = sheet.Range(sheet.Cells(tableTopRow, 1), sheet.Cells(tableTopRow, len(header)))\n                    headerRange.Value2 = System.Array[object](header)\n                    headerRange.Font.Bold = True\n    \n                    if rows:\n                        dataArr = System.Array.CreateInstance(object, len(rows), len(header))\n                        for r in range(len(rows)):\n                            for c in range(len(header)):\n                                dataArr[r, c] = rows[r][c]\n                        dataRange = sheet.Range(sheet.Cells(tableTopRow + 1, 1), sheet.Cells(tableTopRow + len(rows), len(header)))\n                        dataRange.Value2 = dataArr\n    \n                    sheet.Columns.AutoFit()\n                    if System.IO.File.Exists(path):\n                        System.IO.File.Delete(path)\n                    wb.SaveAs(path, 51)\n                    wb.Close(False)\n    \n                _writeWorkbook(entitiesReportPath, profileName, entHeader, entRows)\n                _writeWorkbook(stationsReportPath, profileName, stnHeader, stnRows)\n            finally:\n                excelApp.Quit()\n    \n            if reportErrors:\n                errorMsg = \"Completed with warnings: \" + \"; \".join(reportErrors)\n    \n            tr.Commit()\n        except Exception as ex:\n            excType, excValue, excTb = sys.exc_info()\n            lineNo = excTb.tb_lineno if excTb is not None else -1\n            # Unwrap .NET's InnerException chain - a bare reflection/COM wrapper\n            # message (\"Exception has been thrown by the target of an invocation\")\n            # hides the real cause, which lives one or more levels down.\n            detailParts = [str(excValue)]\n            innerEx = getattr(excValue, \"InnerException\", None)\n            while innerEx is not None:\n                detailParts.append(\"Inner: \" + str(innerEx.Message))\n                innerEx = getattr(innerEx, \"InnerException\", None)\n            errorMsg = \"Line {0}: {1}: {2}\".format(lineNo, excType, \" | \".join(detailParts))\n            if reportErrors:\n                errorMsg += \" | Warnings: \" + \"; \".join(reportErrors)\n            entitiesReportPath = None\n            stationsReportPath = None\n            tr.Abort()\n    profileNames.append(profileName)\n    entitiesReportPaths.append(entitiesReportPath)\n    stationsReportPaths.append(stationsReportPath)\n    errors.append(\"{} | {}\".format(profileName, errorMsg or \"SUCCESS: XY and Z reports saved\"))\n\nif not profileIds:\n    errors.append(\"No profiles selected.\")\n\nOUT = profileNames, entitiesReportPaths, stationsReportPaths, errors + selectionNotes",
+      "Engine": "IronPython2",
+      "VariableInputPorts": true,
+      "Id": "3cdec8d3d3b3422ab2ab69d06f44076b",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [
+        {
+          "Id": "5e44998ede3d4a5da2e48dab90257c3b",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "9a5f23ef0f9443e0959a5cbe9c266859",
+          "Name": "IN[1]",
+          "Description": "True = multiple selection; False = one layout profile",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "493881a419db4735b03837bf3fe738d1",
+          "Name": "",
+          "Description": "Python Script Output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.DoubleInput, CoreNodeModels",
+      "NumberType": "Double",
+      "Id": "67971a788ec54c0392693f6a99b74baf",
+      "NodeType": "NumberInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "b099e4a7aecb4e84a7502416f2f4200d",
+          "Name": "",
+          "Description": "Double",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a number.",
+      "InputValue": 0
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "WatchWidth": 200,
+      "WatchHeight": 200,
+      "Id": "dd4599446ad84d3a9931de046c538032",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "e117bc8b82cc4957899af3d2ffd330b2",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "1cf59e1a38d2492db07530a861771ff2",
+          "Name": "",
+          "Description": "Node output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualizes a node's output"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.BoolSelector, CoreNodeModels",
+      "Id": "b09d8cbbd9924f52ac2790f41fc7823b",
+      "NodeType": "BooleanInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "b878500b4cf64874ac9139c141124c84",
+          "Name": "",
+          "Description": "Boolean",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "True: window-select multiple profile views or profiles. False: select one layout profile curve.",
+      "InputValue": true
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "493881a419db4735b03837bf3fe738d1",
+      "End": "e117bc8b82cc4957899af3d2ffd330b2",
+      "Id": "cc59f43c58bc4b9397f0e5b20d9fdea6",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "b099e4a7aecb4e84a7502416f2f4200d",
+      "End": "5e44998ede3d4a5da2e48dab90257c3b",
+      "Id": "30cbd767cb6e4035a4cb4064a2a49b7c",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "b878500b4cf64874ac9139c141124c84",
+      "End": "9a5f23ef0f9443e0959a5cbe9c266859",
+      "Id": "4ba960adff244820a512cc02b8920c72",
+      "IsHidden": "False"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [
+    {
+      "Name": "DynamoIronPython2.7",
+      "Version": "3.2.1",
+      "ReferenceType": "Package",
+      "Nodes": [
+        "3cdec8d3d3b3422ab2ab69d06f44076b"
+      ]
+    }
+  ],
+  "EnableLegacyPolyCurveBehavior": false,
+  "Thumbnail": "",
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [
+    {
+      "ExtensionGuid": "28992e1d-abb9-417f-8b1b-05e053bee670",
+      "Name": "Properties",
+      "Version": "3.7",
+      "Data": {}
+    }
+  ],
+  "Author": "",
+  "Linting": {
+    "activeLinter": "None",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1,
+      "HasRunWithoutCrash": false,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "3.7.0.11777",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "_Background Preview",
+      "EyeX": -17,
+      "EyeY": 24,
+      "EyeZ": 50,
+      "LookX": 12,
+      "LookY": -13,
+      "LookZ": -58,
+      "UpX": 0,
+      "UpY": 1,
+      "UpZ": 0
+    },
+    "ConnectorPins": [],
+    "NodeViews": [
+      {
+        "Id": "3cdec8d3d3b3422ab2ab69d06f44076b",
+        "Name": "Export XY + Z - Single or Multiple",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 380,
+        "Y": 150
+      },
+      {
+        "Id": "67971a788ec54c0392693f6a99b74baf",
+        "Name": "Station_Interval",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 50,
+        "Y": 250
+      },
+      {
+        "Id": "dd4599446ad84d3a9931de046c538032",
+        "Name": "Watch",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 850.4032482211805,
+        "Y": 133.96774014230556
+      },
+      {
+        "Id": "b09d8cbbd9924f52ac2790f41fc7823b",
+        "Name": "Multiple selection (True) / Single profile (False)",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 30,
+        "Y": 70
+      }
+    ],
+    "Annotations": [
+      {
+        "Id": "b6b886d4cc8f40fa83a5940bd358fbf1",
+        "Title": "CIVIL 3D - XY + Z EXPORT\n\nMultiple selection switch:\nTRUE = window/crossing-select alignments, profile views or layout profiles.\nAll layout profiles on each selected view's alignment are exported once.\nFALSE = click one layout profile curve (not the view grid).\n\nStation Interval:\n0 = critical stations, including curve boundaries and interior samples.\nPositive value = also add regularly spaced stations in metres.\n\nRun, select, then choose an output folder.\nEach profile produces XY and Z reports with actual profile entities.\nExisting same-name reports in the chosen folder are replaced.\nCancel selection or folder selection to stop without exporting.\n\nOutput: profile names, Z paths, XY paths, messages.\n\nWatch messages now show selection, skip reasons and named export errors.",
+        "DescriptionText": null,
+        "IsExpanded": true,
+        "WidthAdjustment": 0,
+        "HeightAdjustment": 0,
+        "Nodes": [],
+        "HasNestedGroups": false,
+        "Left": -408.6483333846387,
+        "Top": -155.82292197881551,
+        "Width": 0,
+        "Height": 0,
+        "FontSize": 24,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": 0,
+        "InitialHeight": 0,
+        "TextblockHeight": 0,
+        "Background": "#FFC1D676"
+      }
+    ],
+    "X": 428.86426089340017,
+    "Y": 311.7023044442242,
+    "Zoom": 0.2594523842921827
+  }
+}

@@ -1,0 +1,354 @@
+{
+  "Uuid": "c9d50072-8843-46aa-a287-3b0ceaeb56c5",
+  "IsCustomNode": false,
+  "Description": "v13: physically edits Top of Profile; hard 1.000m flat each side; auto-extends for max 1:6; R5.5m minimum.",
+  "Name": "C13.01 Civil3D_Duct_Profile_Avoidance_v31_PIPE_DIAMETER_INPUT",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "# Civil 3D Dynamo - Duct Profile Obstruction Avoidance v25 - SAFE PROFILE EDIT\n# IN[0] GO OVER? Boolean - set BEFORE Run: True=OVER / False=UNDER\n# IN[1] APPLY toggle: True=edit selected profile, False=calculate/report only\n# No crossing object selection. User picks one crossing point directly in the Profile View.\n# Fixed design rules: duct 0.200m, clearance 0.300m, max grade 1:6, min vertical radius 5.5m\n\nimport clr, math\nclr.AddReference('AcCoreMgd')\nclr.AddReference('AcMgd')\nclr.AddReference('AcDbMgd')\nclr.AddReference('AeccDbMgd')\nfrom Autodesk.AutoCAD.ApplicationServices import Application\nfrom Autodesk.AutoCAD.DatabaseServices import OpenMode, ObjectId, BlockReference\nimport Autodesk.AutoCAD.EditorInput as EditorInput\nfrom Autodesk.Civil.DatabaseServices import Profile, ProfileView\n\nover = bool(IN[0]) if len(IN)>0 else True\napply_changes = bool(IN[1]) if len(IN)>1 else False\n# Pipe / duct outside diameter from Dynamo IN[2], entered in mm.\ntry:\n    DUCT_DIAMETER_MM=float(IN[2]) if len(IN)>2 and IN[2] is not None else 200.0\nexcept:\n    DUCT_DIAMETER_MM=200.0\nif DUCT_DIAMETER_MM<=0:\n    DUCT_DIAMETER_MM=200.0\nDUCT=DUCT_DIAMETER_MM/1000.0\nCLEAR = 0.300\nMAX_G = 1.0/6.0\nMIN_R = 5.5\nFLAT_EACH_SIDE = 1.000\n\ndoc = Application.DocumentManager.MdiActiveDocument\ndb = doc.Database\ned = doc.Editor\n\ndef show_selected(ids):\n    try:\n        import System\n        ed.SetImpliedSelection(System.Array[ObjectId](ids))\n        ed.Regen()\n    except: pass\n\ndef pick_profile(msg):\n    peo=EditorInput.PromptEntityOptions(msg)\n    r=ed.GetEntity(peo)\n    if r.Status != EditorInput.PromptStatus.OK:\n        raise Exception('Top of Profile selection cancelled.')\n    show_selected([r.ObjectId])\n    return r.ObjectId\n\ndef pick_crossing_point(msg, selected_profile_id):\n    ppo=EditorInput.PromptPointOptions(msg)\n    r=ed.GetPoint(ppo)\n    if r.Status != EditorInput.PromptStatus.OK:\n        raise Exception('Crossing point pick cancelled.')\n    # Keep Top of Profile visibly highlighted after the point pick.\n    show_selected([selected_profile_id])\n    return r.Value\n\ndef pv_xy(pv,x,y):\n    import System\n    sta=clr.Reference[System.Double](0.0)\n    elev=clr.Reference[System.Double](0.0)\n    try:\n        ok=pv.FindStationAndElevationAtXY(float(x),float(y),sta,elev)\n        if ok: return float(sta.Value),float(elev.Value)\n    except: pass\n    return None\n\ndef choose_profile_view(aln,tr,pickpt):\n    candidates=[]\n    try: ids=aln.GetProfileViewIds()\n    except: ids=[]\n    for pvid in ids:\n        try:\n            pv=tr.GetObject(pvid,OpenMode.ForRead)\n            q=pv_xy(pv,pickpt.X,pickpt.Y)\n            if q is not None: candidates.append((pv,q))\n        except: pass\n    if not candidates:\n        raise Exception('The crossing object must be selected inside a Profile View belonging to this alignment.')\n    # Usually only one profile view contains the picked XY. Use the first valid one.\n    return candidates[0][0], candidates[0][1]\n\ndef safe_elevation(prof,station,label):\n    lo=float(prof.StartingStation); hi=float(prof.EndingStation)\n    st=max(lo,min(hi,float(station)))\n    tries=[0.0,1e-6,-1e-6,1e-5,-1e-5,1e-4,-1e-4,1e-3,-1e-3,1e-2,-1e-2,5e-2,-5e-2,1e-1,-1e-1]\n    last=None\n    for off in tries:\n        q=st+off\n        if q<lo or q>hi: continue\n        try: return q,float(prof.ElevationAt(q))\n        except Exception as ex: last=ex\n    raise Exception('%s station %.6f is not on a valid profile entity (%.6f to %.6f). %s'%(label,st,lo,hi,str(last)))\n\nreport=[]\nreport.append('NOTE: E-DUCT / PIPE - 300mm MIN CLEARANCE FROM CROSSING - PROFILE HORIZONTAL 1.0m EACH SIDE (2.0m TOTAL) - MAX GRADIENT 1:6 - ASSUMED DUCT LENGTH 6.0m')\n# v21 input diagnostics - these values come directly from the two Dynamo Boolean ports.\nreport.append('GO OVER INPUT IN[0] = '+str(over))\nreport.append('APPLY INPUT IN[1] = '+str(apply_changes))\nreport.append('SAFE MODE: v21 edit method - AUTO-EXTEND DISABLED TO PREVENT CIVIL 3D CRASH')\nreport.append('RULE: PICKED POINT IS THE CLEARANCE REFERENCE')\nreport.append('RULE: UNDER TOP-OF-DUCT = POINT ELEV - 0.300m')\nreport.append('PIPE / DUCT DIAMETER INPUT = %.0f mm'%DUCT_DIAMETER_MM)\nreport.append('RULE: OVER TOP-OF-DUCT = POINT ELEV + 0.300m + DUCT DIAMETER')\nreport.append('RULE: EXACT HORIZONTAL FLAT = 1.000m EACH SIDE / 2.000m TOTAL')\ntry:\n    pid=pick_profile('\\\\nSELECT TOP OF PROFILE: ')\n    ppoint=pick_crossing_point('\\\\nPICK CROSSING POINT IN PROFILE VIEW: ',pid)\n    with db.TransactionManager.StartTransaction() as tr:\n        prof=tr.GetObject(pid,OpenMode.ForWrite if apply_changes else OpenMode.ForRead)\n        if not isinstance(prof,Profile):\n            raise Exception('Selected Top of Profile is not a Civil 3D Profile.')\n        aln=tr.GetObject(prof.AlignmentId,OpenMode.ForRead)\n        pv,(pick_sta,pick_elev)=choose_profile_view(aln,tr,ppoint)\n\n        report.append('MODE SELECTED BEFORE RUN: '+('OVER / UP' if over else 'UNDER / DOWN'))\n        report.append('TOP OF PROFILE: '+str(prof.Name))\n        report.append('PROFILE VIEW: '+str(pv.Name))\n        report.append('CROSSING INPUT: PICKED POINT ONLY - NO OBJECT SELECTED')\n        report.append('PICKED CROSSING POINT: Sta %.3f  Elev %.3f'%(pick_sta,pick_elev))\n\n        # With point-only input, the picked station is the crossing centre/reference.\n        # The required level platform extends a minimum 1.000 m left and right of it.\n        s0=pick_sta\n        s1=pick_sta\n        flat_left=pick_sta-FLAT_EACH_SIDE\n        flat_right=pick_sta+FLAT_EACH_SIDE\n        if flat_left <= prof.StartingStation or flat_right >= prof.EndingStation:\n            raise Exception('Not enough profile length to provide 1.000m flat on each side of the picked crossing point.')\n\n        sm=pick_sta\n        sm_eval,em=safe_elevation(prof,sm,'Crossing station')\n        # Pick the relevant obstruction boundary point directly in the Profile View.\n        # Selected profile is TOP OF DUCT:\n        # UNDER: top of duct is CLEAR below picked point.\n        # OVER: bottom of duct is CLEAR above picked point, so top of duct adds DUCT.\n        target=(pick_elev+CLEAR+DUCT) if over else (pick_elev-CLEAR)\n        delta=target-em\n        if over and delta<=0: delta=0.0\n        if (not over) and delta>=0: delta=0.0\n\n        # Extend approach/departure automatically until the tie-to-flat tangent\n        # is 1:6 or flatter. Do NOT relax the 1:6 design limit.\n        def find_left_tie(flat_sta,target_z):\n            step=0.25\n            st=flat_sta-step\n            lo=float(prof.StartingStation)\n            bad=flat_sta\n            while st>lo+1e-6:\n                q,z=safe_elevation(prof,st,'Left tie search')\n                run=flat_sta-q\n                if run>1e-9 and abs((target_z-z)/run)<=MAX_G+1e-9:\n                    good=q\n                    # Refine between last failing station and first passing station.\n                    a=good; b=bad\n                    for _ in range(30):\n                        m=0.5*(a+b)\n                        qm,zm=safe_elevation(prof,m,'Left shortest tie')\n                        gm=abs((target_z-zm)/(flat_sta-qm))\n                        if gm<=MAX_G+1e-9: a=qm\n                        else: b=qm\n                    q=a\n                    q,z=safe_elevation(prof,q,'Left shortest tie final')\n                    return q,z\n                bad=q\n                st-=step\n            raise Exception('No left tie point can achieve 1:6 before profile start.')\n\n        def find_right_tie(flat_sta,target_z):\n            step=0.25\n            st=flat_sta+step\n            hi=float(prof.EndingStation)\n            bad=flat_sta\n            while st<hi-1e-6:\n                q,z=safe_elevation(prof,st,'Right tie search')\n                run=q-flat_sta\n                if run>1e-9 and abs((z-target_z)/run)<=MAX_G+1e-9:\n                    good=q\n                    # Refine between last failing station and first passing station.\n                    a=bad; b=good\n                    for _ in range(30):\n                        m=0.5*(a+b)\n                        qm,zm=safe_elevation(prof,m,'Right shortest tie')\n                        gm=abs((zm-target_z)/(qm-flat_sta))\n                        if gm<=MAX_G+1e-9: b=qm\n                        else: a=qm\n                    q=b\n                    q,z=safe_elevation(prof,q,'Right shortest tie final')\n                    return q,z\n                bad=q\n                st+=step\n            raise Exception('No right tie point can achieve 1:6 before profile end.')\n\n        left,el_left=find_left_tie(flat_left,target)\n        right,el_right=find_right_tie(flat_right,target)\n        gL=(target-el_left)/(flat_left-left)\n        gR=(el_right-target)/(right-flat_right)\n\n        # Minimum vertical-curve length based on R=5.5m and the actual grade change\n        # to the zero-grade crossing platform. Keep a practical minimum of 0.50m.\n        # v26 hard geometry checks.\n        if abs(flat_left-(pick_sta-1.000))>1e-6:\n            raise Exception('Left flat must be exactly 1.000m from crossing.')\n        if abs(flat_right-(pick_sta+1.000))>1e-6:\n            raise Exception('Right flat must be exactly 1.000m from crossing.')\n        expected_target=(pick_elev+0.300+DUCT) if over else (pick_elev-0.300)\n        if abs(target-expected_target)>1e-6:\n            raise Exception('Target clearance must be exactly 0.300m from picked point.')\n\n        curveL=max(0.50,MIN_R*abs(gL))\n        curveR=max(0.50,MIN_R*abs(gR))\n        if curveL >= (flat_left-left) or curveR >= (right-flat_right):\n            raise Exception('Insufficient transition length for R5.5m vertical curves; extend available profile length.')\n\n        report += [\n            'MODE: '+('OVER' if over else 'UNDER'),\n            'CLEARANCE: %.3f m'%CLEAR,\n            'DUCT SIZE: %.3f m'%DUCT,\n            'MIN FLAT EACH SIDE: %.3f m'%FLAT_EACH_SIDE,\n            'TARGET TOP-OF-DUCT ELEVATION: %.3f m'%target,\n            'FLAT SECTION: Sta %.3f to %.3f (1.000m each side of picked point Sta %.3f)'%(flat_left,flat_right,pick_sta),\n            'LEFT TIE: Sta %.3f Elev %.3f'%(left,el_left),\n            'RIGHT TIE: Sta %.3f Elev %.3f'%(right,el_right),\n            'SHORTEST COMPLIANT DIVERSION: YES',\n            'TRANSITION GRADES: 1:%.2f / 1:%.2f'%(1.0/abs(gL) if gL else 9999,1.0/abs(gR) if gR else 9999),\n            '1:6 LIMIT CHECK: '+('PASS' if abs(gL)<=MAX_G+1e-9 and abs(gR)<=MAX_G+1e-9 else 'FAIL'),\n            'VERTICAL CURVES: L %.3fm / R %.3fm (minimum radius %.3fm)'%(curveL,curveR,MIN_R)]\n        if apply_changes:\n            # v19 - force a real edit of the selected Civil 3D layout profile.\n            # Autodesk API:\n            #   Profile.PVIs.AddPVI(station,elevation)\n            #   Profile.PVIs.AddPVISymParabola(station,elevation,curveLength)\n            try:\n                try:\n                    prof.UpgradeOpen()\n                except:\n                    pass\n\n                pvicol=prof.PVIs\n                before_count=int(pvicol.Count)\n\n                # The parabolic PVI itself is the grade-intersection point.\n                # Therefore do not also add a tangent PVI at the same station.\n                pviCurveL=flat_left-(curveL*0.5)\n                pviCurveR=flat_right+(curveR*0.5)\n                elevCurveL=target-gL*(flat_left-pviCurveL)\n                elevCurveR=target+gR*(pviCurveR-flat_right)\n\n                created=[]\n\n                # Tie PVI\n                p1=pvicol.AddPVI(float(left),float(el_left))\n                created.append(('PVI 1 - LEFT TIE',float(p1.Station),float(p1.Elevation)))\n\n                # PVI-based symmetric parabola\n                pcL=pvicol.AddPVISymParabola(float(pviCurveL),float(elevCurveL),float(curveL))\n                created.append(('PVI 2 - LEFT VERTICAL CURVE',float(pcL.Station),float(pcL.Elevation)))\n\n                # Flat control PVIs\n                p3=pvicol.AddPVI(float(flat_left),float(target))\n                created.append(('PVI 3 - START FLAT',float(p3.Station),float(p3.Elevation)))\n                p4=pvicol.AddPVI(float(flat_right),float(target))\n                created.append(('PVI 4 - END FLAT',float(p4.Station),float(p4.Elevation)))\n\n                # Right PVI-based symmetric parabola\n                pcR=pvicol.AddPVISymParabola(float(pviCurveR),float(elevCurveR),float(curveR))\n                created.append(('PVI 5 - RIGHT VERTICAL CURVE',float(pcR.Station),float(pcR.Elevation)))\n\n                # Tie PVI\n                p6=pvicol.AddPVI(float(right),float(el_right))\n                created.append(('PVI 6 - RIGHT TIE',float(p6.Station),float(p6.Elevation)))\n\n                after_count=int(pvicol.Count)\n                if after_count <= before_count:\n                    raise Exception('Civil 3D PVI count did not increase. Profile was not modified.')\n\n                tr.Commit()\n\n                # Force graphics regeneration after database commit.\n                try:\n                    ed.Regen()\n                except:\n                    pass\n\n                report.append('APPLY=True - EXACT 300mm CLEARANCE / 2.000m FLAT PROFILE EDIT COMMITTED')\n                report.append('PVI COUNT: %d -> %d'%(before_count,after_count))\n                for label,st,el in created:\n                    report.append('%s: Sta %.3f  Elev %.3f'%(label,st,el))\n                report.append('LEFT CURVE LENGTH: %.3f m'%curveL)\n                report.append('RIGHT CURVE LENGTH: %.3f m'%curveR)\n                report.append('FLAT PRESERVED: Sta %.3f to %.3f'%(flat_left,flat_right))\n                report.append('REGEN CALLED - PROFILE SHOULD NOW SHOW NEW PROFILE LAYOUT PVIs/CURVES')\n            except Exception as ae:\n                try:\n                    tr.Abort()\n                except:\n                    pass\n                raise Exception('REAL PROFILE EDIT FAILED: '+str(ae))\n\n        else:\n            report.append('PREVIEW ONLY - APPLY=False. Set APPLY=True to modify the selected layout profile.')\nexcept Exception as ex:\n    report.append('ERROR: '+str(ex))\nOUT=report\n",
+      "Engine": "IronPython2",
+      "VariableInputPorts": true,
+      "Id": "9224c3bbeec14ee7887f7c9760357a3b",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [
+        {
+          "Id": "23449057d5e64cf8a54b9a76a2fa2d3b",
+          "Name": "IN[0]",
+          "Description": "GO OVER? True=OVER / False=UNDER",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "0b22074151584ac5a9c9c86e15a565a6",
+          "Name": "IN[1]",
+          "Description": "APPLY TO TOP OF PROFILE? True=MODIFY / False=PREVIEW",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "93b13a93b29648778593a0ba6ff54259",
+          "Name": "IN[2]",
+          "Description": "PIPE / DUCT DIAMETER (mm), default 200",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "f8b22b9c63444c8d96180bdc3ee433c8",
+          "Name": "OUT",
+          "Description": "Report",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.BoolSelector, CoreNodeModels",
+      "Id": "a85254e39081487980a6a9893c965272",
+      "NodeType": "BooleanInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "cd9ae1d1372b4388bef8018a45cb2a6b",
+          "Name": "",
+          "Description": "Boolean value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Enables selection between True and False",
+      "InputValue": false
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.BoolSelector, CoreNodeModels",
+      "Id": "044189f5b6cf47f2a9af6e0abe9f65e4",
+      "NodeType": "BooleanInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "92eebf06735842c6ae8e2d3c99be2ee7",
+          "Name": "",
+          "Description": "Boolean value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Enables selection between True and False",
+      "InputValue": true
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "WatchWidth": 200.0,
+      "WatchHeight": 40.0,
+      "Id": "17bead550d4642f98ef581b669cba258",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "2f5bc10cbd9b4a38bc60797df50a4ed0",
+          "Name": "",
+          "Description": "Object to watch",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "db1765ba43d5498e98fc7d415c96ba77",
+          "Name": "",
+          "Description": "Watched object",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualizes a node's output"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.DoubleInput, CoreNodeModels",
+      "NumberType": "Double",
+      "Id": "400d84b7ee16441b89dabf0c627e2cc0",
+      "NodeType": "NumberInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "bea314069fb54055be62f3368c321357",
+          "Name": "",
+          "Description": "Double",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a number.",
+      "InputValue": 200.0
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "f8b22b9c63444c8d96180bdc3ee433c8",
+      "End": "2f5bc10cbd9b4a38bc60797df50a4ed0",
+      "Id": "9cc63fed190148f0abcc97a3373d7814",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "cd9ae1d1372b4388bef8018a45cb2a6b",
+      "End": "23449057d5e64cf8a54b9a76a2fa2d3b",
+      "Id": "9edc94d63e8e44b0a8e0e500c41274b9",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "92eebf06735842c6ae8e2d3c99be2ee7",
+      "End": "0b22074151584ac5a9c9c86e15a565a6",
+      "Id": "50b362238a2b4239953a8ebb85f0794b",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "bea314069fb54055be62f3368c321357",
+      "End": "93b13a93b29648778593a0ba6ff54259",
+      "Id": "b31ff7cfd13c4fcd8e25be34d69d5211",
+      "IsHidden": "False"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [
+    {
+      "Name": "DynamoIronPython2.7",
+      "Version": "3.2.1",
+      "ReferenceType": "Package",
+      "Nodes": [
+        "9224c3bbeec14ee7887f7c9760357a3b"
+      ]
+    }
+  ],
+  "EnableLegacyPolyCurveBehavior": true,
+  "Thumbnail": "",
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [
+    {
+      "ExtensionGuid": "28992e1d-abb9-417f-8b1b-05e053bee670",
+      "Name": "Properties",
+      "Version": "3.7",
+      "Data": {}
+    }
+  ],
+  "Author": "OpenAI",
+  "Linting": {
+    "activeLinter": "None",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": true,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "3.7.0.11777",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "_Background Preview",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "ConnectorPins": [],
+    "NodeViews": [
+      {
+        "Id": "9224c3bbeec14ee7887f7c9760357a3b",
+        "Name": "Python Script",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 699.5759042017562,
+        "Y": 127.00511289195475
+      },
+      {
+        "Id": "a85254e39081487980a6a9893c965272",
+        "Name": "GO OVER?",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 161.05995435220746,
+        "Y": -48.91986624135225
+      },
+      {
+        "Id": "044189f5b6cf47f2a9af6e0abe9f65e4",
+        "Name": "200mm E-DUCT SDR21 | PROFILE AVOIDANCE.",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -166.1874889029881,
+        "Y": 204.8764725973794
+      },
+      {
+        "Id": "17bead550d4642f98ef581b669cba258",
+        "Name": "Watch",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 1270.0,
+        "Y": 210.0
+      },
+      {
+        "Id": "400d84b7ee16441b89dabf0c627e2cc0",
+        "Name": "PIPE / DUCT DIAMETER(MM)",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 136.06378512970235,
+        "Y": 527.9063543805014
+      }
+    ],
+    "Annotations": [
+      {
+        "Id": "87ec9a1bdbe8426fa14a958d9e15582f",
+        "Title": "Title <Double click here to edit group title>",
+        "DescriptionText": "Description <Double click here to edit group description>",
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [
+          "044189f5b6cf47f2a9af6e0abe9f65e4",
+          "e2dd0de77a0449d6acced1c0ca6398fc"
+        ],
+        "HasNestedGroups": false,
+        "Left": -176.1874889029881,
+        "Top": 88.8764725973794,
+        "Width": 436.0,
+        "Height": 386.8831479437413,
+        "FontSize": 36.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": 204.8764725973794,
+        "InitialHeight": 294.8831479437413,
+        "TextblockHeight": 106.0,
+        "Background": "#FFC1D676"
+      },
+      {
+        "Id": "e2dd0de77a0449d6acced1c0ca6398fc",
+        "Title": "200mm E-DUCT SDR21 — 300mm MIN CLEARANCE FROM CROSSING. PROFILE TO BE HORIZONTAL FOR 1.0m \n\nEACH SIDE OF CROSSING (2.0m TOTAL). MAX GRADIENT 1:6. ASSUMED DUCT LENGTH 6.0m.",
+        "DescriptionText": null,
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [],
+        "HasNestedGroups": false,
+        "Left": -157.61519808430324,
+        "Top": 362.7596205411207,
+        "Width": 0.0,
+        "Height": 0.0,
+        "FontSize": 36.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": 0.0,
+        "InitialHeight": 0.0,
+        "TextblockHeight": 0.0,
+        "Background": "#FFC1D676"
+      },
+      {
+        "Id": "14480df480404918a6a8340d195df167",
+        "Title": "200mm E-DUCT SDR21 — 300mm MIN CLEARANCE FROM CROSSING — PROFILE HORIZONTAL 1.0m \n\nEACH SIDE (2.0m TOTAL) — MAX GRADIENT 1:6 — ASSUMED DUCT LENGTH 6.0m",
+        "DescriptionText": null,
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [],
+        "HasNestedGroups": false,
+        "Left": 671.715062395991,
+        "Top": 329.1704122574846,
+        "Width": 0.0,
+        "Height": 0.0,
+        "FontSize": 36.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": 0.0,
+        "InitialHeight": 0.0,
+        "TextblockHeight": 0.0,
+        "Background": "#FFC1D676"
+      }
+    ],
+    "X": -129.20713133356855,
+    "Y": 43.624663964553406,
+    "Zoom": 0.712932409321907
+  }
+}

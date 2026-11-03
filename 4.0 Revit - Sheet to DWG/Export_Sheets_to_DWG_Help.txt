@@ -1,0 +1,54 @@
+EXPORT SHEETS TO DWG - HELP NOTES
+Graph: Export_Sheets_to_DWG.dyn
+=================================
+
+WHAT IT DOES
+------------
+Lets you pick any sheets from the open Revit model and export each one
+to its own DWG file, using these fixed settings:
+  - Units: millimeters
+  - Coordinates: internal origin (not shared/survey coordinates)
+  - Linked/nested content: merged and bound into one file per sheet
+    (no external references / xrefs)
+  - File name: "SheetNumber - SheetName.dwg"
+
+BEFORE YOU RUN
+---------------
+1. Open the Revit model and make sure it's the active document.
+2. Open Export_Sheets_to_DWG.dyn in Dynamo (Dynamo for Revit, CPython3
+   engine - this graph was built for that engine).
+3. Click Run.
+
+STEP BY STEP
+------------
+STEP 1 - Select sheets
+  A window titled "Select sheets to export to DWG" pops up, listing
+  every sheet in the model as "SheetNumber - SheetName".
+  - Tick the checkbox next to each sheet you want to export.
+  - Click "Next: Choose Save Folder" to continue.
+  - Closing the window without clicking Next cancels the whole export.
+
+STEP 2 - Choose the save folder
+  A standard Windows folder browser opens next.
+  - Navigate to and CLICK ON the folder you want to save into (clicking
+    OK without first clicking a folder can leave the selection empty).
+  - Use "Make New Folder" if you need a new folder.
+  - Click OK to confirm, or Cancel to abort the export.
+  If the folder you pick doesn't exist yet, the graph creates it for you.
+
+STEP 3 - Check the result
+  The Watch node shows one line per exported sheet, e.g.:
+    "1.02 PG-1206-A3 - Proposed Garage.dwg -> True"
+  "True" means that sheet exported successfully. If you cancelled at
+  either window, or checked no sheets, the Watch node explains why
+  nothing was exported instead.
+
+TROUBLESHOOTING
+----------------
+- Nothing happens after clicking a button: make sure the Python node's
+  Engine is set to CPython3 (shown under the node's title) - this
+  graph was written for CPython3, not IronPython2.
+- "Could not use folder ...": the chosen path couldn't be created
+  (e.g. no write permission). Pick a different folder and re-run.
+- Re-running: Dynamo re-runs the whole graph, so both windows will
+  pop up again each time - that's expected.

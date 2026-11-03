@@ -1,0 +1,1883 @@
+{
+  "Uuid": "16fa96a1-0eac-4520-a4d5-7f418df8787f",
+  "IsCustomNode": false,
+  "Description": "",
+  "Name": "1.0 Move Survey point_V5.07",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [
+    {
+      "Id": "75cbe762eb4e49d089074284afdef7b9",
+      "Name": "XYZ_E/W,N/S,Elev_Project Base Point",
+      "Type": "string",
+      "Type2": "string",
+      "Value": "83487.960,332147.281\r\n,311.303",
+      "Description": "Creates a string."
+    },
+    {
+      "Id": "e5a68ef9cedc485589138aa3196899f3",
+      "Name": "Angle°",
+      "Type": "number",
+      "Type2": "number",
+      "Value": "347.21",
+      "NumberType": "Double",
+      "Description": "Creates a number."
+    },
+    {
+      "Id": "13b84cc094a44010be62f73939faa9cb",
+      "Name": "Revit",
+      "Type": "string",
+      "Type2": "string",
+      "Value": "..\\..\\Downloads\\STB1A-SST-S11-C_C.rvt",
+      "Description": "Allows you to select a file on the system and returns its file path"
+    }
+  ],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
+      "Id": "1b170e0d7e5a4401a961cffef87abb20",
+      "NodeType": "CodeBlockNode",
+      "Inputs": [
+        {
+          "Id": "210862577629414f92836ee9ab09ecf9",
+          "Name": "list",
+          "Description": "list",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "82839365e29b4843914eb2de6122262b",
+          "Name": "x",
+          "Description": "x = DesignScript.Builtin.Get.ValueAtIndex(list, 0)",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "ec304e29bc514117b4a6677b5a6fbb2b",
+          "Name": "y",
+          "Description": "y = DesignScript.Builtin.Get.ValueAtIndex(list, 1)",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "3993829519174495baef5d8279840ff0",
+          "Name": "z",
+          "Description": "z = DesignScript.Builtin.Get.ValueAtIndex(list, 2)",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Allows for DesignScript code to be authored directly",
+      "Code": "x = list[0];\ny = list[1];\nz = list[2];"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
+      "Id": "6fe5a8f09a3c468c97337754fc0514b9",
+      "NodeType": "CodeBlockNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "879ad9030f1e44aca2d893c250ac5b49",
+          "Name": "string",
+          "Description": "\",\"",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Allows for DesignScript code to be authored directly",
+      "Code": "\",\";"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.ZeroTouch.DSVarArgFunction, DynamoCore",
+      "FunctionSignature": "DSCore.String.Split@string,string[]",
+      "FunctionType": "VariableArgument",
+      "Id": "4c2d98e08aa84a21b0b7ad7c9b24fde3",
+      "NodeType": "FunctionNode",
+      "Inputs": [
+        {
+          "Id": "e254e2fa9fbe4d95aebc06a88441b1b3",
+          "Name": "string",
+          "Description": "String to split up\n\nstring",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "53c06cab6cd948e3beb9b59a42609dfa",
+          "Name": "separator0",
+          "Description": "Strings that, if present, determine the end and start of a split.\n\nstring[]",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "e6d59d0a87d1401caafdd57a1626b766",
+          "Name": "strings",
+          "Description": "List of strings made from the input string",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Auto",
+      "Description": "Divides a single string into a list of strings, with divisions determined by the given separator strings.\n\nString.Split (string: string, separators: string[]): string[]"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.StringInput, CoreNodeModels",
+      "SerializedWidth": 0.0,
+      "SerializedHeight": 0.0,
+      "Id": "75cbe762eb4e49d089074284afdef7b9",
+      "NodeType": "StringInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "e7420da21fec4b98a0956d277dd36cd5",
+          "Name": "",
+          "Description": "String",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a string.",
+      "InputValue": "83487.960,332147.281\r\n,311.303"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.ZeroTouch.DSFunction, DynamoCore",
+      "Id": "c560cce3f46f41ba8a4e081af5a521b0",
+      "NodeType": "FunctionNode",
+      "Inputs": [
+        {
+          "Id": "9bf585b75eb7483e95ede8ae1e296726",
+          "Name": "string",
+          "Description": "String to be converted\n\nstring",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "6692e4cae40b4dbaa6ee1a5ceabf1984",
+          "Name": "number",
+          "Description": "Integer or double-type number",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "FunctionSignature": "DSCore.String.ToNumber@string",
+      "Replication": "Auto",
+      "Description": "Converts a string to an integer or a double.\n\nString.ToNumber (string: string): var[]..[]"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.StringInput, CoreNodeModels",
+      "SerializedWidth": 0.0,
+      "SerializedHeight": 0.0,
+      "Id": "9264a358f0c441dbb1dd75d3b8ef8636",
+      "NodeType": "StringInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "5b0db36737ba4285be128538bdbb8155",
+          "Name": "",
+          "Description": "String",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a string.",
+      "InputValue": "83675.9501,331793.1684,0"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "WatchWidth": 80.0,
+      "WatchHeight": 200.0,
+      "Id": "afa32c90d60849d895b936cf4569b341",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "98581013f7694c08b5fc04ae49ae91b4",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "f8589da7355e4d06aca40be2a57766bd",
+          "Name": "",
+          "Description": "Node output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualizes a node's output"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "WatchWidth": 95.0,
+      "WatchHeight": 40.0,
+      "Id": "a6a6964586db42fdaf5281cad772eeb0",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "386073f40d5c46cbae66201340fb276d",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "9a3d6c74cf824903ac92099412b0c60a",
+          "Name": "",
+          "Description": "Node output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualizes a node's output"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "WatchWidth": 72.0,
+      "WatchHeight": 40.0,
+      "Id": "395ea0d818604b0aa899ab301f3996ca",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "819ce96f820747ac893671e56f7d667f",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "e0793d6124f5437aa289c71b3e0e7718",
+          "Name": "",
+          "Description": "Node output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualizes a node's output"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "WatchWidth": 275.0,
+      "WatchHeight": 40.0,
+      "Id": "53c94acc11654d45ac62caef4e798e3a",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "e1863ba812d7495ebf83ea28f0ff7f5a",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "8613519351194369a5cf3763dd68f5b4",
+          "Name": "",
+          "Description": "Node output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualizes a node's output"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.ZeroTouch.DSFunction, DynamoCore",
+      "Id": "0327222c4123423695c97681914b5498",
+      "NodeType": "FunctionNode",
+      "Inputs": [
+        {
+          "Id": "a5cbb47f6c6b46f8ae1dd58ed0a56045",
+          "Name": "string",
+          "Description": "String to be converted\n\nstring",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "737d5df44f7b46879320fb859e55181b",
+          "Name": "number",
+          "Description": "Integer or double-type number",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "FunctionSignature": "DSCore.String.ToNumber@string",
+      "Replication": "Auto",
+      "Description": "Converts a string to an integer or a double.\n\nString.ToNumber (string: string): var[]..[]"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.ZeroTouch.DSVarArgFunction, DynamoCore",
+      "FunctionSignature": "DSCore.String.Split@string,string[]",
+      "FunctionType": "VariableArgument",
+      "Id": "ffe68043d7184134a4951e4ab6256460",
+      "NodeType": "FunctionNode",
+      "Inputs": [
+        {
+          "Id": "8268f4a5bbf54eb29416df0a8515cc41",
+          "Name": "string",
+          "Description": "String to split up\n\nstring",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "547f65b6c016422f98632f1821ba0470",
+          "Name": "separator0",
+          "Description": "Strings that, if present, determine the end and start of a split.\n\nstring[]",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "90c37b2e4c22486189bed2f12ae12fab",
+          "Name": "strings",
+          "Description": "List of strings made from the input string",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Auto",
+      "Description": "Divides a single string into a list of strings, with divisions determined by the given separator strings.\n\nString.Split (string: string, separators: string[]): string[]"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
+      "Id": "cec56479bc634e3c8488d0c511a82655",
+      "NodeType": "CodeBlockNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "cac554ab2cb941ab87ebbd15c9000d54",
+          "Name": "string",
+          "Description": "\",\"",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Allows for DesignScript code to be authored directly",
+      "Code": "\",\";"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
+      "Id": "0e65a3a9d48a489bbadb6b7197430756",
+      "NodeType": "CodeBlockNode",
+      "Inputs": [
+        {
+          "Id": "db53ee141c9a4ac4b79f1afa392efd31",
+          "Name": "list",
+          "Description": "list",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "8c851ddc24b34a23948ebf6e7f016473",
+          "Name": "x",
+          "Description": "x = DesignScript.Builtin.Get.ValueAtIndex(list, 0)",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "8355ed3373f644a888d9f5bec5b3457c",
+          "Name": "y",
+          "Description": "y = DesignScript.Builtin.Get.ValueAtIndex(list, 1)",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "2fa8a138fe19418591121c554edab3e8",
+          "Name": "z",
+          "Description": "z = DesignScript.Builtin.Get.ValueAtIndex(list, 2)",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Allows for DesignScript code to be authored directly",
+      "Code": "x = list[0];\ny = list[1];\nz = list[2];"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "WatchWidth": 268.0,
+      "WatchHeight": 200.0,
+      "Id": "5598d9a43579484f9d748895e0ee3b08",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "7da14815336941ba976f39879cc83f4c",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "d9d6a21956454ad9803ac40aed1edc89",
+          "Name": "",
+          "Description": "Node output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualizes a node's output"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "WatchWidth": 95.0,
+      "WatchHeight": 40.0,
+      "Id": "7405dff3db7e418dbda1dfbca9d33bf9",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "1da1814eccf940da89b4c6b2cc7697b4",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "7ac4803249d14522aea48a715f8e6503",
+          "Name": "",
+          "Description": "Node output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualizes a node's output"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "WatchWidth": 102.0,
+      "WatchHeight": 40.0,
+      "Id": "dbc2727c26584d2883aa5da7515477cd",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "9b11597aee9b4a3e9dd8b8c36411fbc0",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "0332f709b1ec438eb3ed61a10110b17e",
+          "Name": "",
+          "Description": "Node output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualizes a node's output"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "WatchWidth": 28.0,
+      "WatchHeight": 40.0,
+      "Id": "c73bb55d9a404891b5deff4ca0f1a66e",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "de932f0bc54a4c50950e90f96a179682",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "73398f72e9204e4692f54ce0c98d6025",
+          "Name": "",
+          "Description": "Node output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualizes a node's output"
+    },
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "\"\"\"\r\nDynamo Python Script node\r\nSets the Survey Point's N/S, E/W, Elevation, and Angle to True North.\r\n\r\nInputs (IN):\r\n  IN[0] = North/South offset, in meters\r\n  IN[1] = East/West offset, in meters\r\n  IN[2] = Elevation, in meters\r\n  IN[3] = Angle to True North, in degrees\r\n\r\nUses RevitServices.TransactionManager instead of a raw Transaction object,\r\nbecause Dynamo already wraps Python Script nodes in its own transaction -\r\nstarting a second Transaction manually throws:\r\n  \"InvalidOperationException: Starting a new transaction is not permitted.\"\r\n\"\"\"\r\n\r\nimport math\r\nimport clr\r\n\r\nclr.AddReference(\"RevitServices\")\r\nfrom RevitServices.Persistence import DocumentManager\r\nfrom RevitServices.Transactions import TransactionManager\r\n\r\nclr.AddReference(\"RevitAPI\")\r\nfrom Autodesk.Revit.DB import *\r\n\r\n# Inputs (Convert Meters to Feet - Revit's internal length unit)\r\nns_feet = float(IN[0]) / 0.3048\r\new_feet = float(IN[1]) / 0.3048\r\nelev_feet = float(IN[2]) / 0.3048\r\nangle_deg = float(IN[3])\r\n\r\ndoc = DocumentManager.Instance.CurrentDBDocument\r\n\r\n# 1. Find the Survey Point\r\ncollector = FilteredElementCollector(doc).OfClass(BasePoint)\r\nsurvey_point = next((bp for bp in collector if bp.IsShared), None)\r\n\r\nif survey_point is None:\r\n    OUT = \"Survey Point not found.\"\r\nelse:\r\n    TransactionManager.Instance.EnsureInTransaction(doc)\r\n\r\n    try:\r\n        # Unpin & Unclip\r\n        if survey_point.Pinned:\r\n            survey_point.Pinned = False\r\n        survey_point.Clipped = False\r\n\r\n        # Force position back to Internal Origin (0,0,0)\r\n        pos = survey_point.Position\r\n        if not pos.IsAlmostEqualTo(XYZ.Zero):\r\n            ElementTransformUtils.MoveElement(doc, survey_point.Id, XYZ.Zero.Subtract(pos))\r\n\r\n        # True North Rotation Angle (Radians)\r\n        normalized_angle = angle_deg % 360.0\r\n        revit_angle_deg = (360.0 - normalized_angle) if normalized_angle != 0 else 0.0\r\n        angle_rad = math.radians(revit_angle_deg)\r\n\r\n        # 2. Direct Parameter Updates\r\n        param_map = {\r\n            BuiltInParameter.BASEPOINT_NORTHSOUTH_PARAM: ns_feet,\r\n            BuiltInParameter.BASEPOINT_EASTWEST_PARAM: ew_feet,\r\n            BuiltInParameter.BASEPOINT_ELEVATION_PARAM: elev_feet,\r\n            BuiltInParameter.BASEPOINT_ANGLETON_PARAM: angle_rad\r\n        }\r\n\r\n        for builtin_param, value in param_map.items():\r\n            p = survey_point.get_Parameter(builtin_param)\r\n            if p and not p.IsReadOnly:\r\n                p.Set(value)\r\n\r\n        # Re-clip and Re-pin\r\n        survey_point.Clipped = True\r\n        survey_point.Pinned = True\r\n\r\n        # 3. Regenerate WHILE transaction is active\r\n        doc.Regenerate()\r\n\r\n        OUT = \"Survey Point coordinates updated.\"\r\n\r\n    except Exception as e:\r\n        OUT = \"Failed to update Survey Point: {}\".format(e)\r\n\r\n    finally:\r\n        # Commits on success, rolls back cleanly on failure - either way\r\n        # Dynamo's transaction is closed out properly for the next run.\r\n        TransactionManager.Instance.TransactionTaskDone()\r\n",
+      "Engine": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "f5586fd554ac499892da6cce85a3b0a1",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [
+        {
+          "Id": "d7f85db5056140568ac282d2439a2e39",
+          "Name": "YN",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "01bc149b5c0d4fc4b6080beccf516fc2",
+          "Name": "XE",
+          "Description": "Input #1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "a212e75589dd4762a608415b11e20e91",
+          "Name": "ELV",
+          "Description": "Input #2",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "520421ab457542f79e1a5b15f3b23106",
+          "Name": "Angle°",
+          "Description": "Input #3",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "2df11974e5004d9e8785f4157360cff8",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.DoubleInput, CoreNodeModels",
+      "NumberType": "Double",
+      "Id": "e5a68ef9cedc485589138aa3196899f3",
+      "NodeType": "NumberInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "96d9f0bc05554d97827106e1aed0e9ab",
+          "Name": "",
+          "Description": "Double",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a number.",
+      "InputValue": 347.21
+    },
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "\"\"\"\r\nDynamo Python Script Node\r\nSets Revit Project Units -> Length -> Meters, 3 decimal places, symbol \"m\"\r\n\r\nUsage in Dynamo:\r\n1. IN[0]: Document (Optional - defaults to Active Document if unwired/null).\r\n2. IN[1]: Boolean toggle (True to run, False to skip).\r\n3. Run the graph.\r\n\r\nCompatible Engine: IronPython 2 & CPython 3 (Revit 2021+)\r\n\"\"\"\r\n\r\nimport clr\r\n\r\nclr.AddReference('RevitAPI')\r\nclr.AddReference('RevitServices')\r\n\r\nfrom Autodesk.Revit.DB import FormatOptions, UnitTypeId, SymbolTypeId, SpecTypeId, ForgeTypeId\r\nfrom RevitServices.Persistence import DocumentManager\r\nfrom RevitServices.Transactions import TransactionManager\r\n\r\n# 1. Check Boolean Run Toggle (IN[1])\r\nrun_script = IN[1] if isinstance(IN, list) and len(IN) > 1 else True\r\n\r\nif not bool(run_script):\r\n    OUT = \"Script skipped (Boolean set to False).\"\r\nelse:\r\n    # 2. Resolve Input Document (IN[0] or Active Document fallback)\r\n    input_doc = IN[0] if isinstance(IN, list) and len(IN) > 0 and IN[0] is not None else None\r\n\r\n    if input_doc is not None:\r\n        doc = getattr(input_doc, \"InternalElement\", input_doc)\r\n    else:\r\n        doc = DocumentManager.Instance.CurrentDBDocument\r\n\r\n    # 3. Modify Project Units within a Transaction\r\n    TransactionManager.Instance.EnsureInTransaction(doc)\r\n\r\n    try:\r\n        units = doc.GetUnits()\r\n\r\n        # Create FormatOptions: Meters with 3 decimal places (Accuracy = 0.001)\r\n        format_options = FormatOptions(UnitTypeId.Meters)\r\n        format_options.Accuracy = 0.001\r\n\r\n        # Probe for the meter unit symbol (\"m\")\r\n        symbol_id = None\r\n        for candidate in [\"Meter\", \"Meters\", \"M\", \"MSup1\"]:\r\n            if hasattr(SymbolTypeId, candidate):\r\n                symbol_id = getattr(SymbolTypeId, candidate)\r\n                break\r\n\r\n        if symbol_id is not None:\r\n            format_options.SetSymbolTypeId(symbol_id)\r\n            symbol_note = \"Symbol set to 'm'.\"\r\n        else:\r\n            format_options.SetSymbolTypeId(ForgeTypeId())\r\n            symbol_note = \"No 'm' symbol constant found; symbol left default/blank.\"\r\n\r\n        # Zero-suppression formatting flags\r\n        format_options.SuppressTrailingZeros = False\r\n        format_options.SuppressLeadingZero = False\r\n\r\n        # Apply formatting to Length spec and commit to document\r\n        units.SetFormatOptions(SpecTypeId.Length, format_options)\r\n        doc.SetUnits(units)\r\n\r\n        OUT = \"Success: Project length units set to Meters (3 decimal places). \" + symbol_note\r\n\r\n    except Exception as e:\r\n        OUT = \"Failed to set units: {}\".format(str(e))\r\n\r\n    finally:\r\n        TransactionManager.Instance.TransactionTaskDone()",
+      "Engine": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "43677e2a57a24e6893a1cae5dfac656e",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [
+        {
+          "Id": "de4023c935a14abdb2f7433357b734cc",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "725191c00208450b98084754df5f1cb9",
+          "Name": "IN[1]",
+          "Description": "Input #1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "fa2ea8e1623f43739728b2780adc9a3a",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.BoolSelector, CoreNodeModels",
+      "Id": "fe4922c61d6749b4ac75050d959d20f8",
+      "NodeType": "BooleanInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "dfc1a09445f242d2b1aa218e6f43405d",
+          "Name": "",
+          "Description": "Boolean",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Enables selection between True and False",
+      "InputValue": true
+    },
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "import math\r\nimport clr\r\n\r\n# Import Revit Services for Dynamo\r\nclr.AddReference(\"RevitServices\")\r\nfrom RevitServices.Persistence import DocumentManager\r\nfrom RevitServices.Transactions import TransactionManager\r\n\r\n# Import Revit API\r\nclr.AddReference(\"RevitAPI\")\r\nfrom Autodesk.Revit.DB import *\r\n\r\n# Inputs (Assume meters for N/S, E/W, Elev and degrees for Angle)\r\nns_meters = float(IN[0])\r\new_meters = float(IN[1])\r\nelev_meters = float(IN[2])\r\nangle_deg = float(IN[3])\r\n\r\n# 1. Convert length inputs from Meters to Internal Units (Feet)\r\nns = ns_meters / 0.3048\r\new = ew_meters / 0.3048\r\nelev = elev_meters / 0.3048\r\n\r\n# 2. Normalize and invert the angle for Revit's True North direction convention\r\n# (360 - angle resolves the 12.79 vs 347.21 degree rotational inversion)\r\nnormalized_angle = angle_deg % 360.0\r\nrevit_angle_deg = (360.0 - normalized_angle) if normalized_angle != 0 else 0.0\r\nangle_rad = math.radians(revit_angle_deg)\r\n\r\ndoc = DocumentManager.Instance.CurrentDBDocument\r\n\r\n# Find Survey Point using IsShared property\r\ncollector = FilteredElementCollector(doc).OfClass(BasePoint)\r\nsurvey_point = None\r\n\r\nfor bp in collector:\r\n    if bp.IsShared:\r\n        survey_point = bp\r\n        break\r\n\r\nif survey_point is None:\r\n    OUT = \"Survey Point not found.\"\r\nelse:\r\n    TransactionManager.Instance.EnsureInTransaction(doc)\r\n\r\n    # Update Position via Active ProjectLocation\r\n    active_location = doc.ActiveProjectLocation\r\n    proj_position = active_location.GetProjectPosition(XYZ.Zero)\r\n\r\n    proj_position.NorthSouth = ns\r\n    proj_position.EastWest = ew\r\n    proj_position.Elevation = elev\r\n    proj_position.Angle = angle_rad\r\n\r\n    active_location.SetProjectPosition(XYZ.Zero, proj_position)\r\n\r\n    # Update parameter values directly on the Survey Point element\r\n    ns_param = survey_point.get_Parameter(BuiltInParameter.BASEPOINT_NORTHSOUTH_PARAM)\r\n    ew_param = survey_point.get_Parameter(BuiltInParameter.BASEPOINT_EASTWEST_PARAM)\r\n    elev_param = survey_point.get_Parameter(BuiltInParameter.BASEPOINT_ELEVATION_PARAM)\r\n    angle_param = survey_point.get_Parameter(BuiltInParameter.BASEPOINT_ANGLETON_PARAM)\r\n\r\n    if ns_param and not ns_param.IsReadOnly:\r\n        ns_param.Set(ns)\r\n    if ew_param and not ew_param.IsReadOnly:\r\n        ew_param.Set(ew)\r\n    if elev_param and not elev_param.IsReadOnly:\r\n        elev_param.Set(elev)\r\n    if angle_param and not angle_param.IsReadOnly:\r\n        angle_param.Set(angle_rad)\r\n\r\n    TransactionManager.Instance.TransactionTaskDone()\r\n\r\n    OUT = \"Survey Point updated successfully.\"",
+      "Engine": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "25d3aada2c004c2b8aa0464235171ad2",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [
+        {
+          "Id": "3aab40b261504f29b0346740a4b6f165",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "44c36c71e631429d8f56466d65313f9e",
+          "Name": "IN[1]",
+          "Description": "Input #1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "deba64ce88ec48538254643015d50b27",
+          "Name": "IN[2]",
+          "Description": "Input #2",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "4ac72d155bd64d47b843fcc6a854d728",
+          "Name": "IN[3]",
+          "Description": "Input #3",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "943bfa016b6541ebba1a054093700f70",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    },
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "import clr\r\n\r\n# Import Revit API\r\nclr.AddReference(\"RevitAPI\")\r\nfrom Autodesk.Revit.DB import *\r\n\r\n# Import Revit Services\r\nclr.AddReference(\"RevitServices\")\r\nfrom RevitServices.Persistence import DocumentManager\r\nfrom RevitServices.Transactions import TransactionManager\r\n\r\ndoc = DocumentManager.Instance.CurrentDBDocument\r\n\r\n# Target Level Type name to check/create\r\ntarget_type_name = \"MWP_Circle Head - Survey point\"\r\nsymbol_at_end_1 = IN[0] if IN[0] is not None else True  # Default to True/Checked\r\n\r\n# Fetch all LevelTypes in the project\r\nlevel_types = FilteredElementCollector(doc).OfClass(LevelType).ToElements()\r\n\r\n# Helper function to get Element Name across Python versions\r\ndef get_elem_name(elem):\r\n    param = elem.get_Parameter(BuiltInParameter.SYMBOL_NAME_PARAM)\r\n    if param and param.HasValue:\r\n        return param.AsString()\r\n    try:\r\n        return elem.get_Name()\r\n    except AttributeError:\r\n        return str(elem.Name)\r\n\r\n# Check if target LevelType already exists\r\nexisting_type = None\r\nfor ltype in level_types:\r\n    if get_elem_name(ltype) == target_type_name:\r\n        existing_type = ltype\r\n        break\r\n\r\n# Start Revit Transaction\r\nTransactionManager.Instance.EnsureInTransaction(doc)\r\n\r\nout_message = \"\"\r\n\r\nif existing_type:\r\n    target_type = existing_type\r\n    out_message = f\"Level Type '{target_type_name}' already exists.\"\r\nelse:\r\n    # Duplicate the first available Level Type as a template\r\n    template_type = level_types[0]\r\n    target_type = template_type.Duplicate(target_type_name)\r\n    out_message = f\"Level Type '{target_type_name}' created successfully.\"\r\n\r\n# --- Apply Type Properties ---\r\n\r\n# 1. Set \"Symbol at End 1 Default\"\r\nparam_end1 = target_type.get_Parameter(BuiltInParameter.DATUM_BUBBLE_END_1)\r\nif not param_end1:\r\n    param_end1 = target_type.LookupParameter(\"Symbol at End 1 Default\")\r\n\r\nif param_end1 and not param_end1.IsReadOnly:\r\n    param_end1.Set(1 if symbol_at_end_1 else 0)\r\n\r\n# 2. Set \"Elevation Base\" to Survey Point\r\nparam_base = target_type.get_Parameter(BuiltInParameter.LEVEL_RELATIVE_BASE_TYPE)\r\nif not param_base:\r\n    param_base = target_type.LookupParameter(\"Elevation Base\")\r\n\r\nif param_base and not param_base.IsReadOnly:\r\n    # 0 = Project Base Point, 1 = Survey Point, 2 = Internal Origin\r\n    param_base.Set(1)\r\n\r\n# Commit Transaction\r\nTransactionManager.Instance.TransactionTaskDone()\r\n\r\n# Return result message and element\r\nOUT = [out_message, target_type]",
+      "Engine": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "a8149a7acd1a405d8dc0f310079c3319",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [
+        {
+          "Id": "7055799bfec84c66bb239808a3ff816c",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "3881fbf968bd4e1eada99edaa926402d",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.StringInput, CoreNodeModels",
+      "SerializedWidth": 0.0,
+      "SerializedHeight": 0.0,
+      "Id": "0a70f93b1d8f4ef883de3cdf5fb856b0",
+      "NodeType": "StringInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "bb0b2dfa7b564328b0030d6fefb5d1db",
+          "Name": "",
+          "Description": "String",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a string.",
+      "InputValue": "MWP_Circle Head - Survey point"
+    },
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "import clr\r\n\r\n# Import Revit API\r\nclr.AddReference(\"RevitAPI\")\r\nfrom Autodesk.Revit.DB import *\r\n\r\n# Import Revit Services\r\nclr.AddReference(\"RevitServices\")\r\nfrom RevitServices.Persistence import DocumentManager\r\nfrom RevitServices.Transactions import TransactionManager\r\n\r\ndoc = DocumentManager.Instance.CurrentDBDocument\r\n\r\n# Target Level Type name (Reads from IN[0] or defaults)\r\ntarget_type_name = IN[0] if IN[0] else \"MWP_Circle Head - Survey point\"\r\n\r\n# Helper function to safely get Element Name across Python versions\r\ndef get_elem_name(elem):\r\n    param = elem.get_Parameter(BuiltInParameter.SYMBOL_NAME_PARAM)\r\n    if param and param.HasValue:\r\n        return param.AsString()\r\n    try:\r\n        return elem.get_Name()\r\n    except AttributeError:\r\n        return str(elem.Name)\r\n\r\n# 1. Fetch all Level Types\r\nlevel_types = FilteredElementCollector(doc).OfClass(LevelType).ToElements()\r\n\r\n# Find existing target Level Type\r\ntarget_type = None\r\nfor ltype in level_types:\r\n    if get_elem_name(ltype) == target_type_name:\r\n        target_type = ltype\r\n        break\r\n\r\n# Start Transaction\r\nTransactionManager.Instance.EnsureInTransaction(doc)\r\n\r\n# 2. Create Level Type if missing\r\nif not target_type:\r\n    template_type = level_types[0]\r\n    target_type = template_type.Duplicate(target_type_name)\r\n\r\n# 3. Configure Type Parameters for target Level Type\r\n# Set Symbol at End 1 Default\r\nparam_end1 = target_type.get_Parameter(BuiltInParameter.DATUM_BUBBLE_END_1)\r\nif not param_end1:\r\n    param_end1 = target_type.LookupParameter(\"Symbol at End 1 Default\")\r\nif param_end1 and not param_end1.IsReadOnly:\r\n    param_end1.Set(1)  # 1 = Checked\r\n\r\n# Set Elevation Base to Survey Point (1 = Survey Point)\r\nparam_base = target_type.get_Parameter(BuiltInParameter.LEVEL_RELATIVE_BASE_TYPE)\r\nif not param_base:\r\n    param_base = target_type.LookupParameter(\"Elevation Base\")\r\nif param_base and not param_base.IsReadOnly:\r\n    param_base.Set(1)\r\n\r\n# 4. Find all Level instances and assign the new Type parameter directly\r\nall_levels = FilteredElementCollector(doc).OfClass(Level).WhereElementIsNotElementType().ToElements()\r\n\r\nupdated_count = 0\r\nfor level in all_levels:\r\n    if level.GetTypeId() != target_type.Id:\r\n        # Use BuiltInParameter.ELEM_TYPE_PARAM to assign type ID safely in CPython3\r\n        type_param = level.get_Parameter(BuiltInParameter.ELEM_TYPE_PARAM)\r\n        if type_param and not type_param.IsReadOnly:\r\n            type_param.Set(target_type.Id)\r\n            updated_count += 1\r\n\r\n# Commit Transaction\r\nTransactionManager.Instance.TransactionTaskDone()\r\n\r\n# Return summary output\r\nOUT = [\r\n    f\"Target Type: '{target_type_name}' ready.\",\r\n    f\"Successfully changed {updated_count} levels to '{target_type_name}'.\"\r\n]",
+      "Engine": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "0eec77e9bb114263873b73950318e595",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [
+        {
+          "Id": "3283da3c4602484c89f302e39553bb49",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "a4c0a9f07fcb48da9a6163fe56d8d045",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    },
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "import clr\r\n\r\n# Import Revit API\r\nclr.AddReference(\"RevitAPI\")\r\nfrom Autodesk.Revit.DB import *\r\n\r\n# Import Revit Services\r\nclr.AddReference(\"RevitServices\")\r\nfrom RevitServices.Persistence import DocumentManager\r\nfrom RevitServices.Transactions import TransactionManager\r\n\r\ndoc = DocumentManager.Instance.CurrentDBDocument\r\n\r\n# Inputs\r\nsymbol_at_end_1 = IN[0] if IN[0] is not None else True\r\ntarget_type_name = IN[1] if (len(IN) > 1 and IN[1]) else \"MWP_Circle Head - Survey point\"\r\n\r\n# Helper function to safely get Element Name\r\ndef get_elem_name(elem):\r\n    param = elem.get_Parameter(BuiltInParameter.SYMBOL_NAME_PARAM)\r\n    if param and param.HasValue:\r\n        return param.AsString()\r\n    try:\r\n        return elem.get_Name()\r\n    except AttributeError:\r\n        return str(elem.Name)\r\n\r\n# 1. Fetch all Level Types\r\nlevel_types = FilteredElementCollector(doc).OfClass(LevelType).ToElements()\r\n\r\ntarget_type = None\r\nfor ltype in level_types:\r\n    if get_elem_name(ltype) == target_type_name:\r\n        target_type = ltype\r\n        break\r\n\r\n# Start Transaction\r\nTransactionManager.Instance.EnsureInTransaction(doc)\r\n\r\n# 2. Duplicate Level Type if missing\r\nif not target_type:\r\n    template_type = level_types[0]\r\n    target_type = template_type.Duplicate(target_type_name)\r\n\r\n# 3. Configure Type Parameters\r\nparam_end1 = target_type.get_Parameter(BuiltInParameter.DATUM_BUBBLE_END_1)\r\nif not param_end1:\r\n    param_end1 = target_type.LookupParameter(\"Symbol at End 1 Default\")\r\n\r\nif param_end1 and not param_end1.IsReadOnly:\r\n    param_end1.Set(1 if symbol_at_end_1 else 0)\r\n\r\nparam_base = target_type.get_Parameter(BuiltInParameter.LEVEL_RELATIVE_BASE_TYPE)\r\nif not param_base:\r\n    param_base = target_type.LookupParameter(\"Elevation Base\")\r\n\r\nif param_base and not param_base.IsReadOnly:\r\n    param_base.Set(1) # 1 = Survey Point\r\n\r\n# 4. Fetch all Level elements in document and force Type assignment\r\nall_levels = FilteredElementCollector(doc).OfClass(Level).WhereElementIsNotElementType().ToElements()\r\n\r\nupdated_count = 0\r\nfor elem in all_levels:\r\n    # Ensure we are referencing the real document element\r\n    level = doc.GetElement(elem.Id)\r\n    \r\n    if level.GetTypeId() != target_type.Id:\r\n        # Set parameter directly on the element\r\n        type_param = level.get_Parameter(BuiltInParameter.ELEM_TYPE_PARAM)\r\n        if type_param and not type_param.IsReadOnly:\r\n            type_param.Set(target_type.Id)\r\n            updated_count += 1\r\n\r\n# Commit Transaction\r\nTransactionManager.Instance.TransactionTaskDone()\r\n\r\nOUT = [\r\n    f\"Target Type: '{target_type_name}' configured.\",\r\n    f\"Successfully updated {updated_count} out of {len(all_levels)} levels.\"\r\n]",
+      "Engine": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "452621086f624f19a91ba339145bfc19",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [
+        {
+          "Id": "806439a7ee6d4ce5b99b4ad44df7eca9",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "5108eabeac73408b848542ac49cb4501",
+          "Name": "IN[1]",
+          "Description": "Input #1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "f9bcc61a75f84509b101f77eb4c13279",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.Filename, CoreNodeModels",
+      "Id": "13b84cc094a44010be62f73939faa9cb",
+      "NodeType": "ExtensionNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "8d0a469c6f9744cba473e97e50b8f9d9",
+          "Name": "",
+          "Description": "File Path",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Allows you to select a file on the system and returns its file path",
+      "HintPath": "C:\\Users\\Conor.mcenery\\Downloads\\STB1A-SST-S11-C_C.rvt",
+      "InputValue": "..\\..\\Downloads\\STB1A-SST-S11-C_C.rvt"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "WatchWidth": 200.0,
+      "WatchHeight": 200.0,
+      "Id": "c328e03a0e4e434088e3a83348e3f2dc",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "0bcf20ec87974391858f19def28cc8c9",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "154592fc38084ac1a681fb1fa5be4818",
+          "Name": "",
+          "Description": "Node output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualizes a node's output"
+    },
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "import clr\r\nimport os\r\n\r\n# Import Revit API\r\nclr.AddReference(\"RevitAPI\")\r\nfrom Autodesk.Revit.DB import *\r\n\r\n# Import Revit Services & Transaction Manager\r\nclr.AddReference(\"RevitServices\")\r\nfrom RevitServices.Persistence import DocumentManager\r\nfrom RevitServices.Transactions import TransactionManager\r\n\r\n# Host Document & App\r\nhost_doc = DocumentManager.Instance.CurrentDBDocument\r\n\r\n# Input: File Path string from IN[0]\r\nfile_path_str = IN[0]\r\n\r\noutput = {}\r\n\r\n# Validate IN[0]: must be a non-blank string, a .rvt file, and must exist on disk\r\nis_valid = False\r\nif file_path_str is None:\r\n    output[\"Error\"] = \"IN[0] is blank. Connect a File Path (string) to IN[0].\"\r\nelif not isinstance(file_path_str, str):\r\n    output[\"Error\"] = \"IN[0] is the wrong format. Expected a string file path, got: \" + str(type(file_path_str))\r\nelif not file_path_str.strip():\r\n    output[\"Error\"] = \"IN[0] is blank. Connect a File Path (string) to IN[0].\"\r\nelif not file_path_str.lower().endswith(\".rvt\"):\r\n    output[\"Error\"] = \"IN[0] must point to a .rvt file. Got: \" + file_path_str\r\nelif not os.path.isfile(file_path_str):\r\n    output[\"Error\"] = \"File not found on disk: \" + file_path_str\r\nelse:\r\n    is_valid = True\r\n\r\nif is_valid:\r\n    model_path = ModelPathUtils.ConvertUserVisiblePathToModelPath(file_path_str)\r\n\r\n    TransactionManager.Instance.EnsureInTransaction(host_doc)\r\n\r\n    try:\r\n        # 1. Create/Load the RevitLinkType\r\n        link_options = RevitLinkOptions(False)\r\n        link_type_result = RevitLinkType.Create(host_doc, model_path, link_options)\r\n        link_type_id = link_type_result.ElementId\r\n\r\n        # 2. Place a temporary RevitLinkInstance in the host document.\r\n        # RevitLinkInstance.Create only takes (Document, ElementId) - there is\r\n        # no ImportPlacement overload. That mismatched signature was the error.\r\n        link_instance = RevitLinkInstance.Create(host_doc, link_type_id)\r\n\r\n        # 3. Acquire shared coordinates from the linked file\r\n        host_doc.AcquireCoordinates(link_instance.Id)\r\n\r\n        # 4. Clean up - remove the temporary link instance and link type so you\r\n        # keep the acquired coordinate system without leaving a permanent link.\r\n        host_doc.Delete(link_instance.Id)\r\n        host_doc.Delete(link_type_id)\r\n\r\n        TransactionManager.Instance.TransactionTaskDone()\r\n\r\n        output[\"Status\"] = \"Coordinates successfully acquired from linked file!\"\r\n\r\n    except Exception as e:\r\n        TransactionManager.Instance.TransactionTaskDone()\r\n        output[\"Error\"] = \"Failed to create link or acquire coordinates: \" + str(e)\r\n\r\n# (if is_valid is False, output[\"Error\"] was already set by the checks above)\r\n\r\nOUT = output\r\n",
+      "Engine": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "7bad03328be9424092aa41d24c2fef9d",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [
+        {
+          "Id": "bfcf01c3a7b9419995fa2a19d699866f",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "40833e49ab1842ca8a7285ee68e57efa",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "82839365e29b4843914eb2de6122262b",
+      "End": "98581013f7694c08b5fc04ae49ae91b4",
+      "Id": "ac8f0a8db8004e95934c0417d0351514",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "ec304e29bc514117b4a6677b5a6fbb2b",
+      "End": "386073f40d5c46cbae66201340fb276d",
+      "Id": "34a7a54eaafe4d738561ac2ac65a5e3e",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "3993829519174495baef5d8279840ff0",
+      "End": "819ce96f820747ac893671e56f7d667f",
+      "Id": "0bb1bbbe1d1546d2969848a21d89ec89",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "879ad9030f1e44aca2d893c250ac5b49",
+      "End": "53c06cab6cd948e3beb9b59a42609dfa",
+      "Id": "a5a9bd32f3ca4517a1a77045000f202e",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "e6d59d0a87d1401caafdd57a1626b766",
+      "End": "9bf585b75eb7483e95ede8ae1e296726",
+      "Id": "4b5c38df4e524fb5b122026e4ca527bb",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "e7420da21fec4b98a0956d277dd36cd5",
+      "End": "e254e2fa9fbe4d95aebc06a88441b1b3",
+      "Id": "708995298ef443dabcf5a9028cd933ee",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "6692e4cae40b4dbaa6ee1a5ceabf1984",
+      "End": "210862577629414f92836ee9ab09ecf9",
+      "Id": "08d282d83b434d51b968d5dd8a1a2685",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "5b0db36737ba4285be128538bdbb8155",
+      "End": "8268f4a5bbf54eb29416df0a8515cc41",
+      "Id": "5a057aa3f330462a8f78f8aa0aad4962",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "f8589da7355e4d06aca40be2a57766bd",
+      "End": "44c36c71e631429d8f56466d65313f9e",
+      "Id": "b209783fbf674a808c3b45ca7aa2d8ef",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "9a3d6c74cf824903ac92099412b0c60a",
+      "End": "3aab40b261504f29b0346740a4b6f165",
+      "Id": "f138603c08a942208da6a6bc393ba0aa",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "e0793d6124f5437aa289c71b3e0e7718",
+      "End": "deba64ce88ec48538254643015d50b27",
+      "Id": "7b7448d7220043b281fca370252c6e54",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "737d5df44f7b46879320fb859e55181b",
+      "End": "db53ee141c9a4ac4b79f1afa392efd31",
+      "Id": "91b716e08ad4494db29df674444a3205",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "90c37b2e4c22486189bed2f12ae12fab",
+      "End": "a5cbb47f6c6b46f8ae1dd58ed0a56045",
+      "Id": "a64419a8a81342d4a9b5e5f738f0ba04",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "cac554ab2cb941ab87ebbd15c9000d54",
+      "End": "547f65b6c016422f98632f1821ba0470",
+      "Id": "bf2e82d3de034fc7ae32696f79b19a63",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "8c851ddc24b34a23948ebf6e7f016473",
+      "End": "1da1814eccf940da89b4c6b2cc7697b4",
+      "Id": "05b3f6c4080f4617b6bc903902ab0d2c",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "8355ed3373f644a888d9f5bec5b3457c",
+      "End": "9b11597aee9b4a3e9dd8b8c36411fbc0",
+      "Id": "1c67100508bf4ff7b815e1367fdcb936",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "2fa8a138fe19418591121c554edab3e8",
+      "End": "de932f0bc54a4c50950e90f96a179682",
+      "Id": "9751998cb52f42c78c00eaa53c7fb64a",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "7ac4803249d14522aea48a715f8e6503",
+      "End": "01bc149b5c0d4fc4b6080beccf516fc2",
+      "Id": "3caee896623f49b3810ae09d7e1ac4b9",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "0332f709b1ec438eb3ed61a10110b17e",
+      "End": "d7f85db5056140568ac282d2439a2e39",
+      "Id": "4bdc04f376464fedb5ae9323733ad02f",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "73398f72e9204e4692f54ce0c98d6025",
+      "End": "a212e75589dd4762a608415b11e20e91",
+      "Id": "d7056276e3c14138bc865ac5d7e844b1",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "2df11974e5004d9e8785f4157360cff8",
+      "End": "7da14815336941ba976f39879cc83f4c",
+      "Id": "74741e601cc241488b682ac0c5c79540",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "96d9f0bc05554d97827106e1aed0e9ab",
+      "End": "520421ab457542f79e1a5b15f3b23106",
+      "Id": "799dc591e28c4f12a5d9d343eb974b44",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "96d9f0bc05554d97827106e1aed0e9ab",
+      "End": "4ac72d155bd64d47b843fcc6a854d728",
+      "Id": "6f0bc3d408d7472483d30819bad9c630",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "dfc1a09445f242d2b1aa218e6f43405d",
+      "End": "725191c00208450b98084754df5f1cb9",
+      "Id": "9b763517eb914d7b9925bf026a3801a6",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "dfc1a09445f242d2b1aa218e6f43405d",
+      "End": "806439a7ee6d4ce5b99b4ad44df7eca9",
+      "Id": "6e402e04c8274f3abda02846cfa4955d",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "943bfa016b6541ebba1a054093700f70",
+      "End": "e1863ba812d7495ebf83ea28f0ff7f5a",
+      "Id": "1d8c584640294759869e45bf57eac685",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "bb0b2dfa7b564328b0030d6fefb5d1db",
+      "End": "5108eabeac73408b848542ac49cb4501",
+      "Id": "9a0aa84902cf4727be3bcb738a9c0540",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "8d0a469c6f9744cba473e97e50b8f9d9",
+      "End": "bfcf01c3a7b9419995fa2a19d699866f",
+      "Id": "441fe6553a1b4e6cb882d7030a5d5d1f",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "40833e49ab1842ca8a7285ee68e57efa",
+      "End": "0bcf20ec87974391858f19def28cc8c9",
+      "Id": "8482f951b45a4843a1b12a6afa146801",
+      "IsHidden": "False"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [
+    {
+      "Name": "STB1A-SST-S11-C_C.rvt",
+      "ReferenceType": "External",
+      "Nodes": [
+        "13b84cc094a44010be62f73939faa9cb"
+      ]
+    }
+  ],
+  "EnableLegacyPolyCurveBehavior": true,
+  "Thumbnail": "",
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [
+    {
+      "ExtensionGuid": "28992e1d-abb9-417f-8b1b-05e053bee670",
+      "Name": "Properties",
+      "Version": "2.16",
+      "Data": {}
+    },
+    {
+      "ExtensionGuid": "DFBD9CC0-DB40-457A-939E-8C8555555A9D",
+      "Name": "Generative Design",
+      "Version": "3.0",
+      "Data": {}
+    }
+  ],
+  "Author": "",
+  "Linting": {
+    "activeLinter": "None",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": true,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "3.6.2.11575",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "_Background Preview",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "ConnectorPins": [],
+    "NodeViews": [
+      {
+        "Id": "1b170e0d7e5a4401a961cffef87abb20",
+        "Name": "xyz=enz",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -134.17540487648932,
+        "Y": -18.4033876301105
+      },
+      {
+        "Id": "6fe5a8f09a3c468c97337754fc0514b9",
+        "Name": "Space",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -1106.1935777398196,
+        "Y": 221.88220370833636
+      },
+      {
+        "Id": "4c2d98e08aa84a21b0b7ad7c9b24fde3",
+        "Name": "String.Split",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -844.2958671422472,
+        "Y": -1.9410861418612058
+      },
+      {
+        "Id": "75cbe762eb4e49d089074284afdef7b9",
+        "Name": "XYZ_E/W,N/S,Elev_Project Base Point",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -3730.589371300875,
+        "Y": -165.70716199805747
+      },
+      {
+        "Id": "c560cce3f46f41ba8a4e081af5a521b0",
+        "Name": "String.ToNumber",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -509.2481289611228,
+        "Y": -9.525313629429377
+      },
+      {
+        "Id": "9264a358f0c441dbb1dd75d3b8ef8636",
+        "Name": "XYZ_E/W,N/S,Elev Survey Point - Internal Input",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -3804.5619471754894,
+        "Y": 134.98607036196688
+      },
+      {
+        "Id": "afa32c90d60849d895b936cf4569b341",
+        "Name": "X (East/West)",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 383.3687767211261,
+        "Y": -210.59128939637455
+      },
+      {
+        "Id": "a6a6964586db42fdaf5281cad772eeb0",
+        "Name": "Y (North/South)",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 357.90090247268404,
+        "Y": 110.89069220797717
+      },
+      {
+        "Id": "395ea0d818604b0aa899ab301f3996ca",
+        "Name": "Z (elevation)",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 354.1019128375682,
+        "Y": 256.17378864453474
+      },
+      {
+        "Id": "53c94acc11654d45ac62caef4e798e3a",
+        "Name": "Watch",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 1066.4588705073784,
+        "Y": 199.36736415309946
+      },
+      {
+        "Id": "0327222c4123423695c97681914b5498",
+        "Name": "String.ToNumber",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -304.10841539546493,
+        "Y": 860.7405874246542
+      },
+      {
+        "Id": "ffe68043d7184134a4951e4ab6256460",
+        "Name": "String.Split",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -812.568348826552,
+        "Y": 934.3605788371244
+      },
+      {
+        "Id": "cec56479bc634e3c8488d0c511a82655",
+        "Name": "Space",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -1065.0054100591121,
+        "Y": 1186.9502813601753
+      },
+      {
+        "Id": "0e65a3a9d48a489bbadb6b7197430756",
+        "Name": "xyz=enz",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -38.85980649954604,
+        "Y": 866.107409009903
+      },
+      {
+        "Id": "5598d9a43579484f9d748895e0ee3b08",
+        "Name": "Watch",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 1219.0087464818548,
+        "Y": 927.3109447339825
+      },
+      {
+        "Id": "7405dff3db7e418dbda1dfbca9d33bf9",
+        "Name": "X (East/West)",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 442.17122274087205,
+        "Y": 787.4272356320862
+      },
+      {
+        "Id": "dbc2727c26584d2883aa5da7515477cd",
+        "Name": "Y (North/South)",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 441.50931826182523,
+        "Y": 939.9821541023584
+      },
+      {
+        "Id": "c73bb55d9a404891b5deff4ca0f1a66e",
+        "Name": "Z (elevation)",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 438.03639642614735,
+        "Y": 1159.6489043539507
+      },
+      {
+        "Id": "f5586fd554ac499892da6cce85a3b0a1",
+        "Name": "NEZ_YXZ_ANFLE",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 864.3871802239344,
+        "Y": 956.6858880296405
+      },
+      {
+        "Id": "e5a68ef9cedc485589138aa3196899f3",
+        "Name": "Angle°",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -3732.7014397910725,
+        "Y": -1.6130690410406032
+      },
+      {
+        "Id": "43677e2a57a24e6893a1cae5dfac656e",
+        "Name": "Sets Revit Project Units -> Length -> Meters, 3 decimal places",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -766.1087699558627,
+        "Y": -735.0654724724898
+      },
+      {
+        "Id": "fe4922c61d6749b4ac75050d959d20f8",
+        "Name": "Boolean",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -1184.3927950377,
+        "Y": -764.9547585947291
+      },
+      {
+        "Id": "25d3aada2c004c2b8aa0464235171ad2",
+        "Name": "NEZ_YXZ_ANFLE",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 754.1347607323421,
+        "Y": 71.77594447899367
+      },
+      {
+        "Id": "a8149a7acd1a405d8dc0f310079c3319",
+        "Name": "Add MWP_Circle Head - Survey point",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": true,
+        "ShowGeometry": true,
+        "X": -198.31892169395542,
+        "Y": -684.7010254307106
+      },
+      {
+        "Id": "0a70f93b1d8f4ef883de3cdf5fb856b0",
+        "Name": "String",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -1181.6818217221205,
+        "Y": -601.4731786946438
+      },
+      {
+        "Id": "0eec77e9bb114263873b73950318e595",
+        "Name": "Python Script",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": true,
+        "ShowGeometry": true,
+        "X": -183.32190330874096,
+        "Y": -470.78133836455515
+      },
+      {
+        "Id": "452621086f624f19a91ba339145bfc19",
+        "Name": "Pick - Add MWP_Circle Head - Survey point",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -767.6041735570363,
+        "Y": -574.6069568473144
+      },
+      {
+        "Id": "13b84cc094a44010be62f73939faa9cb",
+        "Name": "Revit",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -3720.9848518152808,
+        "Y": -400.8789611252733
+      },
+      {
+        "Id": "c328e03a0e4e434088e3a83348e3f2dc",
+        "Name": "Watch",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -1862.5420376974553,
+        "Y": -345.67343713227046
+      },
+      {
+        "Id": "7bad03328be9424092aa41d24c2fef9d",
+        "Name": "AcquireSharedCoordinates_fixed",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -2284.374346034063,
+        "Y": -319.0675229380854
+      }
+    ],
+    "Annotations": [
+      {
+        "Id": "d476060e50424e9c908dc8f3a4620049",
+        "Title": "Review",
+        "DescriptionText": "",
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [
+          "c560cce3f46f41ba8a4e081af5a521b0",
+          "4c2d98e08aa84a21b0b7ad7c9b24fde3",
+          "6fe5a8f09a3c468c97337754fc0514b9",
+          "1b170e0d7e5a4401a961cffef87abb20"
+        ],
+        "HasNestedGroups": false,
+        "Left": -1116.1935777398196,
+        "Top": -91.4033876301105,
+        "Width": 1206.0181728633302,
+        "Height": 445.28559133844686,
+        "FontSize": 36.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": -18.4033876301105,
+        "InitialHeight": 385.28559133844686,
+        "TextblockHeight": 63.0,
+        "Background": "#FFA4E1FF"
+      },
+      {
+        "Id": "6dd13dd4a20b47c6bdbf7902da4a5c61",
+        "Title": "To Revit",
+        "DescriptionText": null,
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [
+          "75cbe762eb4e49d089074284afdef7b9",
+          "9264a358f0c441dbb1dd75d3b8ef8636",
+          "e5a68ef9cedc485589138aa3196899f3",
+          "13b84cc094a44010be62f73939faa9cb",
+          "c788ca2471b0443287370d9b84f4f1da",
+          "b6f2a497e07b4257b4664730d66ffe75"
+        ],
+        "HasNestedGroups": false,
+        "Left": -3814.5619471754894,
+        "Top": -473.8789611252733,
+        "Width": 1113.0315968227765,
+        "Height": 1431.1101682604603,
+        "FontSize": 36.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": -400.8789611252733,
+        "InitialHeight": 1454.1101682604603,
+        "TextblockHeight": 63.0,
+        "Background": "#FFFFA07A"
+      },
+      {
+        "Id": "3582bdee088c4ca98e67ec131b75297d",
+        "Title": "Project Base Point",
+        "DescriptionText": "Description <Double click here to edit group description>",
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [
+          "afa32c90d60849d895b936cf4569b341",
+          "a6a6964586db42fdaf5281cad772eeb0",
+          "395ea0d818604b0aa899ab301f3996ca",
+          "53c94acc11654d45ac62caef4e798e3a",
+          "25d3aada2c004c2b8aa0464235171ad2",
+          "917faad119154d87949698bd8bbb0287",
+          "d39f2a05c3a2480cbc8e2fe2d0789890"
+        ],
+        "HasNestedGroups": false,
+        "Left": 344.1019128375682,
+        "Top": -283.5912893963746,
+        "Width": 1084.35695766981,
+        "Height": 671.7650780409093,
+        "FontSize": 36.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": -210.59128939637455,
+        "InitialHeight": 611.7650780409093,
+        "TextblockHeight": 63.0,
+        "Background": "#FFC1D676"
+      },
+      {
+        "Id": "d78109e7232b405fb6694254c7ba656b",
+        "Title": "Survey Point - Internal",
+        "DescriptionText": "Description <Double click here to edit group description>",
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [
+          "5598d9a43579484f9d748895e0ee3b08",
+          "7405dff3db7e418dbda1dfbca9d33bf9",
+          "dbc2727c26584d2883aa5da7515477cd",
+          "c73bb55d9a404891b5deff4ca0f1a66e",
+          "f5586fd554ac499892da6cce85a3b0a1",
+          "ace11cc7caa24adc9d97dad55b22ecef",
+          "e9b74e73d06a455592b44e6c51ed1c2d"
+        ],
+        "HasNestedGroups": false,
+        "Left": 428.03639642614735,
+        "Top": 714.4272356320862,
+        "Width": 1145.9723500557075,
+        "Height": 577.2216687218645,
+        "FontSize": 36.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": 787.4272356320862,
+        "InitialHeight": 517.2216687218645,
+        "TextblockHeight": 63.0,
+        "Background": "#FFC1D676"
+      },
+      {
+        "Id": "5990fca3a3e244b7b45ee70d869c1865",
+        "Title": "Review",
+        "DescriptionText": "Description <Double click here to edit group description>",
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [
+          "0327222c4123423695c97681914b5498",
+          "ffe68043d7184134a4951e4ab6256460",
+          "cec56479bc634e3c8488d0c511a82655",
+          "0e65a3a9d48a489bbadb6b7197430756"
+        ],
+        "HasNestedGroups": false,
+        "Left": -1075.0054100591121,
+        "Top": 787.7405874246542,
+        "Width": 1260.145603559566,
+        "Height": 531.209693935521,
+        "FontSize": 36.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": 860.7405874246542,
+        "InitialHeight": 471.20969393552105,
+        "TextblockHeight": 63.0,
+        "Background": "#FFA4E1FF"
+      },
+      {
+        "Id": "f0aa5a72c4e446c9b4b68c5d1f0d1041",
+        "Title": "Optional, but do.\r\nChange unit to (M) and add New Level Lable to Ref Survey Point\r\n",
+        "DescriptionText": "Description <Double click here to edit group description>",
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [
+          "43677e2a57a24e6893a1cae5dfac656e",
+          "fe4922c61d6749b4ac75050d959d20f8",
+          "a8149a7acd1a405d8dc0f310079c3319",
+          "0a70f93b1d8f4ef883de3cdf5fb856b0",
+          "0eec77e9bb114263873b73950318e595",
+          "452621086f624f19a91ba339145bfc19",
+          "85883e2235af4d84a165b108a0a5bd78"
+        ],
+        "HasNestedGroups": false,
+        "Left": -1194.3927950377,
+        "Top": -924.9547585947291,
+        "Width": 1351.0738733437445,
+        "Height": 626.6873806323592,
+        "FontSize": 36.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": -764.9547585947291,
+        "InitialHeight": 562.6873806323592,
+        "TextblockHeight": 150.0,
+        "Background": "#FFC1D676"
+      },
+      {
+        "Id": "7c95ca7998474f7b9ad99a46351c57cf",
+        "Title": "Title <Double click here to edit group title>",
+        "DescriptionText": "Description <Double click here to edit group description>",
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [
+          "c328e03a0e4e434088e3a83348e3f2dc",
+          "7bad03328be9424092aa41d24c2fef9d"
+        ],
+        "HasNestedGroups": false,
+        "Left": -2294.374346034063,
+        "Top": -418.67343713227046,
+        "Width": 718.8323083366076,
+        "Height": 365.0,
+        "FontSize": 36.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": -345.67343713227046,
+        "InitialHeight": 171.60591419418506,
+        "TextblockHeight": 63.0,
+        "Background": "#FFC1D676"
+      },
+      {
+        "Id": "c788ca2471b0443287370d9b84f4f1da",
+        "Title": "Is a String, not a number ",
+        "DescriptionText": null,
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [],
+        "HasNestedGroups": false,
+        "Left": -2868.530350352713,
+        "Top": 916.231207135187,
+        "Width": 0.0,
+        "Height": 0.0,
+        "FontSize": 36.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": 0.0,
+        "InitialHeight": 0.0,
+        "TextblockHeight": 0.0,
+        "Background": "#FFC1D676"
+      },
+      {
+        "Id": "85883e2235af4d84a165b108a0a5bd78",
+        "Title": "Is a String, not a number ",
+        "DescriptionText": null,
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [],
+        "HasNestedGroups": false,
+        "Left": -618.9276387091481,
+        "Top": -339.26737796236995,
+        "Width": 0.0,
+        "Height": 0.0,
+        "FontSize": 36.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": 0.0,
+        "InitialHeight": 0.0,
+        "TextblockHeight": 0.0,
+        "Background": "#FFC1D676"
+      },
+      {
+        "Id": "b6f2a497e07b4257b4664730d66ffe75",
+        "Title": "04/08/20206\nConor Mcenery, to set up a project folder to a Giving layout\n*Create note Ctrl+W\n*no package\n*Work on Revit 2024 to 2026 and on",
+        "DescriptionText": null,
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [],
+        "HasNestedGroups": false,
+        "Left": -3766.621482404792,
+        "Top": 396.4819806775573,
+        "Width": 0.0,
+        "Height": 0.0,
+        "FontSize": 36.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": 0.0,
+        "InitialHeight": 0.0,
+        "TextblockHeight": 0.0,
+        "Background": "#FFC1D676"
+      },
+      {
+        "Id": "ace11cc7caa24adc9d97dad55b22ecef",
+        "Title": "Python Code",
+        "DescriptionText": null,
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [],
+        "HasNestedGroups": false,
+        "Left": 864.5306254522133,
+        "Top": 903.832869091571,
+        "Width": 0.0,
+        "Height": 0.0,
+        "FontSize": 36.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": 0.0,
+        "InitialHeight": 0.0,
+        "TextblockHeight": 0.0,
+        "Background": "#FFC1D676"
+      },
+      {
+        "Id": "917faad119154d87949698bd8bbb0287",
+        "Title": "Python Code",
+        "DescriptionText": null,
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [],
+        "HasNestedGroups": false,
+        "Left": 814.4466707657972,
+        "Top": 165.31389664764174,
+        "Width": 0.0,
+        "Height": 0.0,
+        "FontSize": 36.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": 0.0,
+        "InitialHeight": 0.0,
+        "TextblockHeight": 0.0,
+        "Background": "#FFC1D676"
+      },
+      {
+        "Id": "d39f2a05c3a2480cbc8e2fe2d0789890",
+        "Title": "Survey in revit Follow Survey YXZ and in cad it is XYZ",
+        "DescriptionText": null,
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [],
+        "HasNestedGroups": false,
+        "Left": 798.4142864479712,
+        "Top": -101.647314795466,
+        "Width": 0.0,
+        "Height": 0.0,
+        "FontSize": 36.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": 0.0,
+        "InitialHeight": 0.0,
+        "TextblockHeight": 0.0,
+        "Background": "#FFC1D676"
+      },
+      {
+        "Id": "e9b74e73d06a455592b44e6c51ed1c2d",
+        "Title": "Survey in revit Follow Survey YXZ and in cad it is XYZ",
+        "DescriptionText": null,
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [],
+        "HasNestedGroups": false,
+        "Left": 854.2174358558109,
+        "Top": 812.1632694966629,
+        "Width": 0.0,
+        "Height": 0.0,
+        "FontSize": 36.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": 0.0,
+        "InitialHeight": 0.0,
+        "TextblockHeight": 0.0,
+        "Background": "#FFC1D676"
+      }
+    ],
+    "X": 1424.719113714804,
+    "Y": 392.5559856669212,
+    "Zoom": 0.3923404908733769
+  }
+}

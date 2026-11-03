@@ -1,0 +1,252 @@
+{
+    "Uuid":  "8bf17b57-e0a5-4bec-b931-db41eed0b492",
+    "IsCustomNode":  false,
+    "Description":  "",
+    "Name":  "Add_MWP-NEZ_ChainageLevel_Labels",
+    "ElementResolver":  {
+                            "ResolutionMap":  {
+
+                                              }
+                        },
+    "Inputs":  [
+
+               ],
+    "Outputs":  [
+
+                ],
+    "Nodes":  [
+                  {
+                      "ConcreteType":  "PythonNodeModels.PythonNode, PythonNodeModels",
+                      "NodeType":  "PythonScriptNode",
+                      "Engine":  "IronPython2",
+                      "EngineName":  "IronPython2",
+                      "VariableInputPorts":  true,
+                      "Code":  "\"\"\"\nDynamo for Civil 3D - Python Script node (engine: IronPython2)\n\nNOTE: this node is IronPython2, not CPython3. Touching\nApplication.DocumentManager/Document pulls in the Autodesk.AutoCAD.Interop\nCOM assembly, and Dynamo\u0027s CPython3 (pythonnet) engine cannot load it in\nthis Civil3D build (\"Could not load type ... AcWindowState ...\") even with\nan explicit clr.AddReference. IronPython2\u0027s CLR hosting resolves it fine,\nwhich is why every working Civil3D-API Dynamo example uses it for this kind\nof call.\n\nNOTE 2: in this Civil3D build the managed LabelStyle/MarkerStyle/ProfileView\nwrappers\u0027 .Name getter is present in metadata but not actually bound\n(\"Property Get method was not found\" even via reflection) - confirmed via a\ndiagnostic dump. Each object\u0027s .AcadObject is the real COM Automation object\n(IAeccLabelStyle / IAeccMarkerStyle / IAeccProfileView), which IronPython2\ncan late-bind directly, so .AcadObject.Name is used instead everywhere a\nstyle/view name is needed.\n\nNOTE 3: DO NOT DRAG/GRIP-EDIT labels this script creates. Confirmed with the\nuser: StationElevationLabel.Create() objects crash Civil3D on drag in this\nbuild even after a full save/close/reopen, while natively UI-created\nChainage and Level labels drag fine - this reproduces with or without the\nSetReferenceTextTarget call below, so it is not what causes it. This is a\ndefect in how this OEM build handles API-created label objects, not\nsomething fixable from this script - the native \"Add Labels\" command\nevidently sets up internal state that the bare API call skips. Treat the\nstation/elevation this script places each label at as final.\n\nPrompts you to select one or more Profile Views on screen, then adds a\n\"Chainage and Level\" (StationElevationLabel) at the start station of every\nprofile line plotted in each selected view, using the given label/marker\nstyles.\n\nInputs:\n  IN[0] : label style name  (string, default \"MWP-NEZ\")\n  IN[1] : marker style name (string, default \"Basic Circle with Cross\")\n\nOutput:\n  OUT   : list[str] run report - one line per profile view / error\n\"\"\"\nimport clr\nfrom System import Array\n\nclr.AddReference(\u0027AcMgd\u0027)\nclr.AddReference(\u0027AcCoreMgd\u0027)\nclr.AddReference(\u0027AcDbMgd\u0027)\nclr.AddReference(\u0027AeccDbMgd\u0027)\n\nfrom Autodesk.AutoCAD.ApplicationServices import Application\nfrom Autodesk.AutoCAD.DatabaseServices import OpenMode, TypedValue\nfrom Autodesk.AutoCAD.EditorInput import PromptSelectionOptions, SelectionFilter\nfrom Autodesk.Civil.ApplicationServices import CivilDocument\nfrom Autodesk.Civil.DatabaseServices import StationElevationLabel\n\nlabel_style_name = IN[0] if IN[0] else \"MWP-NEZ\"\nmarker_style_name = IN[1] if IN[1] else \"Basic Circle with Cross\"\n\nreport = []\n\ndoc = Application.DocumentManager.MdiActiveDocument\ndb = doc.Database\ned = doc.Editor\n\n# Only let AECC_PROFILE_VIEW entities be picked, so a stray pick can\u0027t grab something else.\nfilterData = SelectionFilter(Array[TypedValue]([TypedValue(0, \"AECC_PROFILE_VIEW\")]))\nopts = PromptSelectionOptions()\nopts.MessageForAdding = \"Select Profile View(s) to add MWP-NEZ chainage/level labels to: \"\n\nselResult = ed.GetSelection(opts, filterData)\n\nif str(selResult.Status) != \"OK\" or selResult.Value.Count == 0:\n    report.append(\"No Profile Views selected - nothing done.\")\nelse:\n    with doc.LockDocument():\n        with db.TransactionManager.StartTransaction() as tr:\n            civilDoc = CivilDocument.GetCivilDocument(db)\n\n            # Resolve the label style ObjectId by name (via the COM AcadObject - see NOTE 2).\n            labelStyleId = None\n            for sid in civilDoc.Styles.LabelStyles.ProfileViewLabelStyles.StationElevationLabelStyles:\n                style = tr.GetObject(sid, OpenMode.ForRead)\n                try:\n                    name = style.AcadObject.Name\n                except Exception:\n                    name = None\n                if name == label_style_name:\n                    labelStyleId = sid\n                    break\n\n            # Resolve the marker style ObjectId by name (via the COM AcadObject - see NOTE 2).\n            markerStyleId = None\n            for sid in civilDoc.Styles.MarkerStyles:\n                style = tr.GetObject(sid, OpenMode.ForRead)\n                try:\n                    name = style.AcadObject.Name\n                except Exception:\n                    name = None\n                if name == marker_style_name:\n                    markerStyleId = sid\n                    break\n\n            if labelStyleId is None:\n                report.append(\"ERROR: label style \u0027{}\u0027 not found under Profile View \u003e Station Elevation styles.\".format(label_style_name))\n            if markerStyleId is None:\n                report.append(\"ERROR: marker style \u0027{}\u0027 not found.\".format(marker_style_name))\n\n            if labelStyleId is not None and markerStyleId is not None:\n                createdTotal = 0\n                for selObj in selResult.Value:\n                    pvId = selObj.ObjectId\n                    pv = tr.GetObject(pvId, OpenMode.ForWrite)\n                    alignment = tr.GetObject(pv.AlignmentId, OpenMode.ForRead)\n                    startStation = pv.StationStart\n                    try:\n                        pv_name = pv.AcadObject.Name\n                    except Exception:\n                        pv_name = pvId.Handle.ToString()\n\n                    # Which profiles are actually plotted in this view.\n                    profileIds = []\n                    try:\n                        for go in pv.GraphOverrides:\n                            if go.Draw:\n                                profileIds.append(go.ProfileId)\n                    except Exception:\n                        profileIds = []\n\n                    if not profileIds:\n                        # No explicit overrides recorded -\u003e all profiles on the alignment are shown.\n                        profileIds = list(alignment.GetProfileIds())\n\n                    createdHere = 0\n                    for profId in profileIds:\n                        try:\n                            profile = tr.GetObject(profId, OpenMode.ForRead)\n                            elev = profile.ElevationAt(startStation)\n                            newLabelId = StationElevationLabel.Create(pvId, labelStyleId, markerStyleId, startStation, elev)\n                            createdHere += 1\n\n                            # Bind the label\u0027s Reference Text component(s) to the profile\u0027s parent\n                            # alignment - this is what populates \"Reference Text Objects\" \u003e alignment\n                            # name/N,E in Properties, matching the MWP-NEZ example. Confirmed this is\n                            # NOT the cause of the drag-crash in NOTE 3 (plain labels crash too), so\n                            # it\u0027s safe to include as long as the \"never drag\" rule is followed.\n                            try:\n                                newLabel = tr.GetObject(newLabelId, OpenMode.ForWrite)\n                                compIds = newLabel.GetTextComponentIds()\n                            except Exception:\n                                compIds = []\n                            boundCount = 0\n                            for compId in compIds:\n                                try:\n                                    newLabel.SetReferenceTextTarget(compId, pv.AlignmentId)\n                                    boundCount += 1\n                                except Exception:\n                                    pass\n                            if compIds and boundCount == 0:\n                                report.append(\"  \u0027{}\u0027 station {:.3f}: label created but no text component accepted the alignment reference\".format(pv_name, startStation))\n                        except Exception as ex:\n                            report.append(\"  skip \u0027{}\u0027 profile {}: {}\".format(pv_name, profId, str(ex)))\n\n                    createdTotal += createdHere\n                    report.append(\"{} : start CH {:.3f} -\u003e {} label(s) created\".format(pv_name, startStation, createdHere))\n\n                report.append(\"TOTAL labels created: {}\".format(createdTotal))\n\n                if createdTotal \u003e 0:\n                    report.append(\n                        \"NOTE: do NOT drag/grip-edit these labels - confirmed this crashes Civil3D \"\n                        \"in this build even after a save/close/reopen (pre-existing, UI-created \"\n                        \"labels drag fine; only ones this script creates via the API are affected). \"\n                        \"Treat the placement above as final.\"\n                    )\n\n            tr.Commit()\n\ned.Regen()\n\nOUT = report\n",
+                      "Id":  "6a9be05c-1171-483e-959e-5c9fa37a222b",
+                      "Inputs":  [
+                                     {
+                                         "Id":  "4206c433-41b4-4905-abf5-6849928e8183",
+                                         "Name":  "IN[0]",
+                                         "Description":  "Input #0",
+                                         "UsingDefaultValue":  false,
+                                         "Level":  2,
+                                         "UseLevels":  false,
+                                         "KeepListStructure":  false
+                                     },
+                                     {
+                                         "Id":  "c7bd2146-d40b-41f3-a154-e9c7ad2052e8",
+                                         "Name":  "IN[1]",
+                                         "Description":  "Input #1",
+                                         "UsingDefaultValue":  false,
+                                         "Level":  2,
+                                         "UseLevels":  false,
+                                         "KeepListStructure":  false
+                                     }
+                                 ],
+                      "Outputs":  [
+                                      {
+                                          "Id":  "38651fe4-30c6-4e91-9022-27c7212b629c",
+                                          "Name":  "OUT",
+                                          "Description":  "Result of the python script",
+                                          "UsingDefaultValue":  false,
+                                          "Level":  2,
+                                          "UseLevels":  false,
+                                          "KeepListStructure":  false
+                                      }
+                                  ],
+                      "Replication":  "Disabled",
+                      "Description":  "Runs an embedded Python script.",
+                      "Name":  "Add MWP-NEZ Chainage \u0026 Level Labels"
+                  },
+                  {
+                      "ConcreteType":  "CoreNodeModels.Input.StringInput, CoreNodeModels",
+                      "NodeType":  "StringInputNode",
+                      "InputValue":  "MWP-NEZ",
+                      "Id":  "14400d2f-aed7-4c2a-8f19-82be73ab1b14",
+                      "Inputs":  [
+
+                                 ],
+                      "Outputs":  [
+                                      {
+                                          "Id":  "8fafe07e-3909-4ba0-83bb-8a394e4b9432",
+                                          "Name":  "",
+                                          "Description":  "String",
+                                          "UsingDefaultValue":  false,
+                                          "Level":  2,
+                                          "UseLevels":  false,
+                                          "KeepListStructure":  false
+                                      }
+                                  ],
+                      "Replication":  "Disabled",
+                      "Description":  "Creates a string.",
+                      "Name":  "Label style name"
+                  },
+                  {
+                      "ConcreteType":  "CoreNodeModels.Input.StringInput, CoreNodeModels",
+                      "NodeType":  "StringInputNode",
+                      "InputValue":  "Basic Circle with Cross",
+                      "Id":  "19ce510b-e103-4ed0-82fc-ed41eaddaf86",
+                      "Inputs":  [
+
+                                 ],
+                      "Outputs":  [
+                                      {
+                                          "Id":  "6871bbd6-9d75-40d6-be39-3bbc4a9bd5ea",
+                                          "Name":  "",
+                                          "Description":  "String",
+                                          "UsingDefaultValue":  false,
+                                          "Level":  2,
+                                          "UseLevels":  false,
+                                          "KeepListStructure":  false
+                                      }
+                                  ],
+                      "Replication":  "Disabled",
+                      "Description":  "Creates a string.",
+                      "Name":  "Marker style name"
+                  },
+                  {
+                      "ConcreteType":  "CoreNodeModels.Watch, CoreNodeModels",
+                      "NodeType":  "ExtensionNode",
+                      "Id":  "a0713460-8ff8-447c-9549-57fa2f144794",
+                      "Inputs":  [
+                                     {
+                                         "Id":  "530ceef8-adab-4261-bf15-6d569bdd361b",
+                                         "Name":  "",
+                                         "Description":  "Node to show output from",
+                                         "UsingDefaultValue":  false,
+                                         "Level":  2,
+                                         "UseLevels":  false,
+                                         "KeepListStructure":  false
+                                     }
+                                 ],
+                      "Outputs":  [
+                                      {
+                                          "Id":  "d0e51e13-7d1a-4c8a-9a8a-0e7c3f2f9a01",
+                                          "Name":  "",
+                                          "Description":  "Watch contents",
+                                          "UsingDefaultValue":  false,
+                                          "Level":  2,
+                                          "UseLevels":  false,
+                                          "KeepListStructure":  false
+                                      }
+                                  ],
+                      "Replication":  "Disabled",
+                      "Description":  "Visualize the output of node.",
+                      "Name":  "Watch"
+                  }
+              ],
+    "Connectors":  [
+                       {
+                           "Start":  "8fafe07e-3909-4ba0-83bb-8a394e4b9432",
+                           "End":  "4206c433-41b4-4905-abf5-6849928e8183",
+                           "Id":  "f6983baa-4daa-4196-8800-79af7f6510af",
+                           "IsHidden":  "False"
+                       },
+                       {
+                           "Start":  "6871bbd6-9d75-40d6-be39-3bbc4a9bd5ea",
+                           "End":  "c7bd2146-d40b-41f3-a154-e9c7ad2052e8",
+                           "Id":  "aeadf79e-b968-45a6-a645-085317c82575",
+                           "IsHidden":  "False"
+                       },
+                       {
+                           "Start":  "38651fe4-30c6-4e91-9022-27c7212b629c",
+                           "End":  "530ceef8-adab-4261-bf15-6d569bdd361b",
+                           "Id":  "d712810a-c5c5-4c80-b996-09034c301c6d",
+                           "IsHidden":  "False"
+                       }
+                   ],
+    "Dependencies":  [
+
+                     ],
+    "NodeLibraryDependencies":  [
+
+                                ],
+    "Thumbnail":  "",
+    "GraphDocumentationURL":  null,
+    "ExtensionWorkspaceData":  [
+
+                               ],
+    "Author":  "",
+    "Linting":  {
+                    "activeLinter":  "None",
+                    "activeLinterId":  "7b75fb44-43fb-4631-b7e7-5deb54ed5b7d",
+                    "warningCount":  0,
+                    "errorCount":  0
+                },
+    "Bindings":  [
+
+                 ],
+    "View":  {
+                 "Dynamo":  {
+                                "ScaleFactor":  1.0,
+                                "HasRunWithoutCrash":  true,
+                                "IsVisibleInDynamoLibrary":  true,
+                                "Version":  "3.0.0.0",
+                                "RunType":  "Manual",
+                                "RunPeriod":  "1000"
+                            },
+                 "Camera":  {
+                                "Name":  "_Background Preview",
+                                "EyeX":  -17.0,
+                                "EyeY":  24.0,
+                                "EyeZ":  50.0,
+                                "LookX":  12.0,
+                                "LookY":  -13.0,
+                                "LookZ":  -58.0,
+                                "UpX":  0.0,
+                                "UpY":  1.0,
+                                "UpZ":  0.0
+                            },
+                 "ConnectorPins":  [
+
+                                   ],
+                 "NodeViews":  [
+                                   {
+                                       "Id":  "6a9be05c-1171-483e-959e-5c9fa37a222b",
+                                       "Name":  "Add MWP-NEZ Chainage \u0026 Level Labels",
+                                       "IsSetAsInput":  false,
+                                       "IsSetAsOutput":  false,
+                                       "Excluded":  false,
+                                       "ShowGeometry":  true,
+                                       "X":  480.0,
+                                       "Y":  200.0
+                                   },
+                                   {
+                                       "Id":  "14400d2f-aed7-4c2a-8f19-82be73ab1b14",
+                                       "Name":  "Label style name",
+                                       "IsSetAsInput":  true,
+                                       "IsSetAsOutput":  false,
+                                       "Excluded":  false,
+                                       "ShowGeometry":  true,
+                                       "X":  120.0,
+                                       "Y":  120.0
+                                   },
+                                   {
+                                       "Id":  "19ce510b-e103-4ed0-82fc-ed41eaddaf86",
+                                       "Name":  "Marker style name",
+                                       "IsSetAsInput":  true,
+                                       "IsSetAsOutput":  false,
+                                       "Excluded":  false,
+                                       "ShowGeometry":  true,
+                                       "X":  120.0,
+                                       "Y":  260.0
+                                   },
+                                   {
+                                       "Id":  "a0713460-8ff8-447c-9549-57fa2f144794",
+                                       "Name":  "Watch",
+                                       "IsSetAsInput":  false,
+                                       "IsSetAsOutput":  true,
+                                       "Excluded":  false,
+                                       "ShowGeometry":  true,
+                                       "X":  900.0,
+                                       "Y":  200.0
+                                   }
+                               ],
+                 "Annotations":  [
+
+                                 ],
+                 "X":  0.0,
+                 "Y":  0.0,
+                 "Zoom":  1.0
+             }
+}

@@ -1,0 +1,815 @@
+{
+  "Uuid": "f7afe65a-1af8-44d8-b617-252aee89bb52",
+  "IsCustomNode": false,
+  "Description": "v2.0 - Prompts the user to pick an Alignment, looks up a Surface and Profile View style by name, a profile name, and a point in the drawing; creates a Surface Profile from the alignment/surface, then a Profile View there in that style. Clears the Profile View's default bottom bands and replaces them with four Profile Data bands (Profile 2 Levels, Profile 1 Levels, Level Difference, Chainage) by style name, linked to the created profile.",
+  "Name": "C6.02 - CreateProfileView",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [
+    {
+      "Id": "780f2eab09c54f81a1eb5efdde3c6649",
+      "Name": "Surface_Name",
+      "Type": "string",
+      "Type2": "string",
+      "Value": "24974-MWP-EXISTING SURFACE",
+      "Description": "Creates a string."
+    },
+    {
+      "Id": "5a836b4881dc4b2ca095e2410aa570c5",
+      "Name": "Profile_View_Style",
+      "Type": "string",
+      "Type2": "string",
+      "Value": "MWP - SITE SECTION",
+      "Description": "Creates a string."
+    },
+    {
+      "Id": "aa810754b84d47409ee5bc17f01761ce",
+      "Name": "Band_Profile2Levels_Style",
+      "Type": "string",
+      "Type2": "string",
+      "Value": "Profile 2 Levels",
+      "Description": "Creates a string."
+    },
+    {
+      "Id": "404a60cd170f422e9d98b2c7f4d4ace4",
+      "Name": "Band_Profile1Levels_Style",
+      "Type": "string",
+      "Type2": "string",
+      "Value": "Profile 1 Levels",
+      "Description": "Creates a string."
+    },
+    {
+      "Id": "110bedc68d66476b9f92a7dfe0a09b2a",
+      "Name": "Band_LevelDifference_Style",
+      "Type": "string",
+      "Type2": "string",
+      "Value": "Level Difference",
+      "Description": "Creates a string."
+    },
+    {
+      "Id": "18ef09cdc74145e5b790292e1edd2761",
+      "Name": "Band_Chainage_Style",
+      "Type": "string",
+      "Type2": "string",
+      "Value": "Chainage",
+      "Description": "Creates a string."
+    },
+    {
+      "Id": "8240a9dfe15443b1954a0686ae54257e",
+      "Name": "Profile_Style",
+      "Type": "string",
+      "Type2": "string",
+      "Value": "MWP-Existing Ground",
+      "Description": "Creates a string."
+    },
+    {
+      "Id": "8e51b976a9a143eabc6d0954ef971f09",
+      "Name": "Offset_Distance",
+      "Type": "number",
+      "Type2": "number",
+      "Value": "-1",
+      "NumberType": "Double",
+      "Description": "Creates a number."
+    },
+    {
+      "Id": "1aad0f461841457db1b57effaf2f16f9",
+      "Name": "Weeding_Distance",
+      "Type": "number",
+      "Type2": "number",
+      "Value": "5",
+      "NumberType": "Double",
+      "Description": "Creates a number."
+    },
+    {
+      "Id": "aacd89b2219d4fb69b8d925f47706cfa",
+      "Name": "Angle_Threshold_Degrees",
+      "Type": "number",
+      "Type2": "number",
+      "Value": "2",
+      "NumberType": "Double",
+      "Description": "Creates a number."
+    },
+    {
+      "Id": "d489ee1074d04186b995ede3ef8603a7",
+      "Name": "Curve_Radius",
+      "Type": "number",
+      "Type2": "number",
+      "Value": "12",
+      "NumberType": "Double",
+      "Description": "Creates a number."
+    },
+    {
+      "Id": "a6bdf86b665c453cb994574bd89c6c12",
+      "Name": "Profile_NewProfileNameInput",
+      "Type": "string",
+      "Type2": "string",
+      "Value": "MWP-Road Design",
+      "Description": "Creates a string."
+    }
+  ],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "# CreateProfileView v3.21\r\nimport sys\r\nimport math\r\nimport System\r\nimport clr\r\nclr.AddReference('AcMgd')\r\nclr.AddReference('AcDbMgd')\r\nclr.AddReference('AcCoreMgd')\r\nclr.AddReference('AeccDbMgd')\r\n\r\nimport Autodesk.AutoCAD.ApplicationServices as AcAppServ\r\nimport Autodesk.AutoCAD.DatabaseServices as AcDb\r\nimport Autodesk.AutoCAD.EditorInput as AcEd\r\nimport Autodesk.Civil.ApplicationServices as CivAppServ\r\nimport Autodesk.Civil.DatabaseServices as CivDb\r\nimport Autodesk.Civil.DatabaseServices.Styles as CivDbStyles\r\nimport Autodesk.AutoCAD.Geometry as AcGe\r\n\r\nsurfaceName = IN[0]\r\nprofileViewStyleName = IN[1]\r\nband_Profile2LevelsStyle = IN[2]\r\nband_Profile1LevelsStyle = IN[3]\r\nband_LevelDifferenceStyle = IN[4]\r\nband_ChainageStyle = IN[5]\r\nprofileStyleName = IN[6]\r\noffsetDistance = IN[7]\r\nweedingDistance = IN[8]\r\nangleThresholdDegInput = IN[9]\r\ncurveRadiusInputParam = IN[10]\r\nnewProfileNameInput = IN[11] if len(IN) > 11 else None\r\n\r\ndoc = AcAppServ.Application.DocumentManager.MdiActiveDocument\r\ndb = doc.Database\r\ned = doc.Editor\r\n\r\ndef _safeCall(obj, methodName, args=None):\r\n    try:\r\n        m = getattr(obj, methodName)\r\n        return m(*(args or []))\r\n    except AttributeError:\r\n        mi = obj.GetType().GetMethod(methodName)\r\n        if mi is None:\r\n            return None\r\n        if args:\r\n            return mi.Invoke(obj, System.Array[object](args))\r\n        return mi.Invoke(obj, None)\r\n\r\ndef _safeProp(obj, propName):\r\n    try:\r\n        return getattr(obj, propName)\r\n    except AttributeError:\r\n        pi = obj.GetType().GetProperty(propName)\r\n        if pi is None:\r\n            raise\r\n        return pi.GetValue(obj, None)\r\n\r\ndef _safeIndex(obj, i):\r\n    try:\r\n        return obj[i]\r\n    except (AttributeError, TypeError):\r\n        mi = obj.GetType().GetMethod(\"get_Item\")\r\n        if mi is None:\r\n            raise\r\n        return mi.Invoke(obj, System.Array[object]([i]))\r\n\r\nprofileName = None\r\nprofileViewName = None\r\nprofileViewId = None\r\nerrorMsg = None\r\n\r\npeo = AcEd.PromptEntityOptions(\"\\nSelect an alignment to create a profile view for: \")\r\npeo.SetRejectMessage(\"\\nMust be an Alignment.\")\r\npeo.AddAllowedClass(clr.GetClrType(CivDb.Alignment), True)\r\n\r\nresult = ed.GetEntity(peo)\r\n\r\nif result.Status == AcEd.PromptStatus.OK:\r\n    newProfileName = None\r\n    if newProfileNameInput is not None and str(newProfileNameInput).strip() != \"\":\r\n        newProfileName = str(newProfileNameInput).strip()\r\n    else:\r\n        pso = AcEd.PromptStringOptions(\"\\nEnter a name for the new profile: \")\r\n        pso.AllowSpaces = True\r\n        pso.DefaultValue = \"MWP-Road Design\"\r\n        pso.UseDefaultValue = True\r\n        nameResult = ed.GetString(pso)\r\n        if nameResult.Status == AcEd.PromptStatus.OK:\r\n            newProfileName = nameResult.StringResult\r\n\r\n    if newProfileName:\r\n        ppo = AcEd.PromptPointOptions(\"\\nSpecify profile view origin: \")\r\n        pointResult = ed.GetPoint(ppo)\r\n\r\n        if pointResult.Status == AcEd.PromptStatus.OK:\r\n            insertPoint = pointResult.Value\r\n            with doc.LockDocument():\r\n                with db.TransactionManager.StartTransaction() as tr:\r\n                    try:\r\n                        civilDoc = CivAppServ.CivilApplication.ActiveDocument\r\n                        alignmentId = result.ObjectId\r\n\r\n                        surfaceIds = civilDoc.GetSurfaceIds()\r\n                        surfaceId = AcDb.ObjectId.Null\r\n                        surfaceMatched = False\r\n                        if surfaceName:\r\n                            for sid in surfaceIds:\r\n                                sObj = tr.GetObject(sid, AcDb.OpenMode.ForRead)\r\n                                if sObj.Name.strip().lower() == str(surfaceName).strip().lower():\r\n                                    surfaceId = sid\r\n                                    surfaceMatched = True\r\n                                    break\r\n                        if surfaceId.IsNull and surfaceIds.Count > 0:\r\n                            surfaceId = surfaceIds[0]\r\n\r\n                        if surfaceId.IsNull:\r\n                            errorMsg = \"No surfaces found in the drawing.\"\r\n                        else:\r\n                            styleId = AcDb.ObjectId.Null\r\n                            styleMatched = False\r\n                            if profileStyleName:\r\n                                try:\r\n                                    candidateStyleId = civilDoc.Styles.ProfileStyles[str(profileStyleName)]\r\n                                    if not candidateStyleId.IsNull:\r\n                                        styleId = candidateStyleId\r\n                                        styleMatched = True\r\n                                except:\r\n                                    pass\r\n                            if styleId.IsNull and civilDoc.Styles.ProfileStyles.Count > 0:\r\n                                styleId = civilDoc.Styles.ProfileStyles[0]\r\n\r\n                            labelSetId = AcDb.ObjectId.Null\r\n                            if civilDoc.Styles.LabelSetStyles.ProfileLabelSetStyles.Count > 0:\r\n                                labelSetId = civilDoc.Styles.LabelSetStyles.ProfileLabelSetStyles[0]\r\n\r\n                            layerId = db.Clayer\r\n\r\n                            baseProfileName = newProfileName\r\n                            profileNameSuffix = 1\r\n                            while True:\r\n                                try:\r\n                                    profileId = CivDb.Profile.CreateFromSurface(\r\n                                        newProfileName, alignmentId, surfaceId, layerId, styleId, labelSetId\r\n                                    )\r\n                                    break\r\n                                except Exception as ex:\r\n                                    exMsg = str(ex).lower()\r\n                                    if not (\"already exists\" in exMsg or \"duplicate\" in exMsg) or profileNameSuffix > 50:\r\n                                        raise\r\n                                    profileNameSuffix += 1\r\n                                    newProfileName = \"{0}_{1}\".format(baseProfileName, profileNameSuffix)\r\n\r\n                            profileEntity = tr.GetObject(profileId, AcDb.OpenMode.ForRead)\r\n                            profileName = profileEntity.Name\r\n\r\n                            profileLabelErrors = []\r\n                            labelGroupDiag = []\r\n\r\n                            def _processLabelGroups(sourceLabel, entity):\r\n                                if entity is None:\r\n                                    return\r\n                                try:\r\n                                    groupIds = _safeCall(entity, \"GetLabelGroupIds\")\r\n                                    if groupIds is not None:\r\n                                        for lgId in groupIds:\r\n                                            try:\r\n                                                lgObj = tr.GetObject(lgId, AcDb.OpenMode.ForWrite)\r\n                                                typeName = lgObj.GetType().Name\r\n                                                typeNameLower = typeName.lower()\r\n                                                erased = False\r\n                                                if \"tangent\" in typeNameLower or \"straight\" in typeNameLower or \"line\" in typeNameLower:\r\n                                                    lgObj.Erase()\r\n                                                    erased = True\r\n                                                labelGroupDiag.append(\"{0}: {1}{2}\".format(sourceLabel, typeName, \" (ERASED)\" if erased else \"\"))\r\n                                            except Exception as ex:\r\n                                                profileLabelErrors.append(\"Failed to process {0} label group {1}: {2}\".format(sourceLabel, lgId, ex))\r\n                                except Exception as ex:\r\n                                    profileLabelErrors.append(\"{0} label group cleanup skipped: {1}\".format(sourceLabel, ex))\r\n\r\n                            _processLabelGroups(\"Profile\", profileEntity)\r\n                            try:\r\n                                alignmentEntity = tr.GetObject(alignmentId, AcDb.OpenMode.ForRead)\r\n                                _processLabelGroups(\"Alignment\", alignmentEntity)\r\n                            except Exception as ex:\r\n                                profileLabelErrors.append(\"Alignment label group cleanup failed: {0}\".format(ex))\r\n\r\n                            offsetProfileErrors = []\r\n                            offsetProfileId = AcDb.ObjectId.Null\r\n                            offsetProfileName = None\r\n                            try:\r\n                                if offsetDistance is not None:\r\n                                    offsetProfileNameBase = newProfileName + \" Offset\"\r\n                                    offsetProfileNameFinal = offsetProfileNameBase\r\n                                    offsetSuffix = 1\r\n                                    while True:\r\n                                        try:\r\n                                            offsetProfileId = CivDb.Profile.CreateByLayout(\r\n                                                offsetProfileNameFinal, alignmentId, layerId, styleId, labelSetId\r\n                                            )\r\n                                            break\r\n                                        except Exception as ex:\r\n                                            exMsg = str(ex).lower()\r\n                                            if not (\"already exists\" in exMsg or \"duplicate\" in exMsg) or offsetSuffix > 50:\r\n                                                raise\r\n                                            offsetSuffix += 1\r\n                                            offsetProfileNameFinal = \"{0}_{1}\".format(offsetProfileNameBase, offsetSuffix)\r\n\r\n                                    offsetProfileEntity = tr.GetObject(offsetProfileId, AcDb.OpenMode.ForWrite)\r\n                                    offsetProfileName = offsetProfileEntity.Name\r\n\r\n                                    srcPVIs = _safeProp(profileEntity, \"PVIs\")\r\n                                    pviCount = _safeProp(srcPVIs, \"Count\")\r\n                                    dstPVIs = _safeProp(offsetProfileEntity, \"PVIs\")\r\n\r\n                                    minSpacing = float(weedingDistance) if weedingDistance else 0.0\r\n                                    curveRadiusInput = float(curveRadiusInputParam) if curveRadiusInputParam is not None else 100.0\r\n                                    angleThresholdDeg = float(angleThresholdDegInput) if angleThresholdDegInput is not None else 10.0\r\n\r\n                                    keptPoints = []\r\n                                    lastKeptStation = None\r\n                                    for i in range(pviCount):\r\n                                        try:\r\n                                            pviObj = _safeIndex(srcPVIs, i)\r\n                                            station = float(_safeProp(pviObj, \"Station\"))\r\n                                            elevation = float(_safeProp(pviObj, \"Elevation\"))\r\n                                            isEndpoint = (i == 0 or i == pviCount - 1)\r\n                                            if not isEndpoint and lastKeptStation is not None and (station - lastKeptStation) < minSpacing:\r\n                                                continue\r\n                                            keptPoints.append((station, elevation))\r\n                                            lastKeptStation = station\r\n                                        except Exception as ex:\r\n                                            offsetProfileErrors.append(\"Failed to read PVI {0}: {1}\".format(i, ex))\r\n\r\n                                    # SINGLE-PASS PVI ADDITION (RADIUS BASED)\r\n                                    addedCount = len(keptPoints)\r\n                                    curveCount = 0\r\n                                    maxAngleSeen = 0.0\r\n\r\n                                    for k in range(addedCount):\r\n                                        station, elevation = keptPoints[k]\r\n                                        targetElevation = elevation + float(offsetDistance)\r\n                                        isEndpoint = (k == 0 or k == addedCount - 1)\r\n\r\n                                        if isEndpoint:\r\n                                            dstPVIs.AddPVI(station, targetElevation)\r\n                                        else:\r\n                                            prevStation, prevElevation = keptPoints[k - 1]\r\n                                            nextStation, nextElevation = keptPoints[k + 1]\r\n\r\n                                            grade1 = (elevation - prevElevation) / (station - prevStation) if (station - prevStation) != 0 else 0.0\r\n                                            grade2 = (nextElevation - elevation) / (nextStation - station) if (nextStation - station) != 0 else 0.0\r\n                                            angleDeg = abs(math.degrees(math.atan(grade2) - math.atan(grade1)))\r\n\r\n                                            if angleDeg > maxAngleSeen:\r\n                                                maxAngleSeen = angleDeg\r\n\r\n                                            if angleDeg > angleThresholdDeg:\r\n                                                maxAllowedLen = min(station - prevStation, nextStation - station) * 0.80\r\n                                                angleRad = math.radians(angleDeg)\r\n                                                maxAllowedRadius = (maxAllowedLen / angleRad) if angleRad > 0 else curveRadiusInput\r\n                                                targetRadius = min(curveRadiusInput, maxAllowedRadius)\r\n\r\n                                                if targetRadius >= 0.5:\r\n                                                    try:\r\n                                                        dstPVIs.AddPVIArc(station, targetElevation, targetRadius)\r\n                                                        curveCount += 1\r\n                                                    except Exception:\r\n                                                        dstPVIs.AddPVI(station, targetElevation)\r\n                                                else:\r\n                                                    dstPVIs.AddPVI(station, targetElevation)\r\n                                            else:\r\n                                                dstPVIs.AddPVI(station, targetElevation)\r\n\r\n                                    offsetProfileErrors.append(\"Offset profile '{0}' PVIs added: {1}/{2} (weeded to {3}m spacing, {4} arc curves >{5} deg, max angle {6:.2f} deg)\".format(\r\n                                        offsetProfileName, addedCount, pviCount, minSpacing, curveCount, angleThresholdDeg, maxAngleSeen))\r\n                            except Exception as ex:\r\n                                offsetProfileErrors.append(\"Offset profile creation failed: {0}\".format(ex))\r\n\r\n                            pvStyleId = AcDb.ObjectId.Null\r\n                            pvStyleMatched = False\r\n                            if profileViewStyleName:\r\n                                try:\r\n                                    candidatePvStyleId = civilDoc.Styles.ProfileViewStyles[str(profileViewStyleName)]\r\n                                    if not candidatePvStyleId.IsNull:\r\n                                        pvStyleId = candidatePvStyleId\r\n                                        pvStyleMatched = True\r\n                                except:\r\n                                    pass\r\n                            if pvStyleId.IsNull and civilDoc.Styles.ProfileViewStyles.Count > 0:\r\n                                pvStyleId = civilDoc.Styles.ProfileViewStyles[0]\r\n\r\n                            pvBandSetId = AcDb.ObjectId.Null\r\n                            if civilDoc.Styles.ProfileViewBandSetStyles.Count > 0:\r\n                                pvBandSetId = civilDoc.Styles.ProfileViewBandSetStyles[0]\r\n\r\n                            baseProfileViewName = newProfileName + \" Profile View\"\r\n                            newProfileViewName = baseProfileViewName\r\n                            profileViewNameSuffix = 1\r\n                            while True:\r\n                                try:\r\n                                    profileViewId = CivDb.ProfileView.Create(\r\n                                        alignmentId, insertPoint, newProfileViewName, pvBandSetId, pvStyleId\r\n                                    )\r\n                                    break\r\n                                except Exception as ex:\r\n                                    exMsg = str(ex).lower()\r\n                                    if not (\"already exists\" in exMsg or \"duplicate\" in exMsg) or profileViewNameSuffix > 50:\r\n                                        raise\r\n                                    profileViewNameSuffix += 1\r\n                                    newProfileViewName = \"{0}_{1}\".format(baseProfileViewName, profileViewNameSuffix)\r\n\r\n                            profileViewEntity = tr.GetObject(profileViewId, AcDb.OpenMode.ForWrite)\r\n                            profileViewName = profileViewEntity.Name\r\n\r\n                            _processLabelGroups(\"ProfileView\", profileViewEntity)\r\n\r\n                            bandRequests = [\r\n                                (\"Profile 2 Levels\", band_Profile2LevelsStyle),\r\n                                (\"Profile 1 Levels\", band_Profile1LevelsStyle),\r\n                                (\"Level Difference\", band_LevelDifferenceStyle),\r\n                                (\"Chainage\", band_ChainageStyle),\r\n                            ]\r\n                            bandErrors = []\r\n                            bandsResolved = []\r\n                            for bandType, bandStyleName in bandRequests:\r\n                                if not bandStyleName:\r\n                                    continue\r\n                                try:\r\n                                    civilDoc.Styles.BandStyles.ProfileViewProfileDataBandStyles[str(bandStyleName)]\r\n                                    bandsResolved.append(bandType)\r\n                                except Exception as ex:\r\n                                    bandErrors.append(\"{0}: style '{1}' not found: {2}\".format(bandType, bandStyleName, ex))\r\n\r\n                            bandsAdded = []\r\n                            try:\r\n                                currentBottom = profileViewEntity.Bands.GetBottomBandItems()\r\n                                originalBottomCount = currentBottom.Count\r\n\r\n                                bandTypeEnumType = None\r\n                                for m in currentBottom.GetType().GetMethods():\r\n                                    if m.Name == \"Add\" and len(m.GetParameters()) == 2:\r\n                                        bandTypeEnumType = m.GetParameters()[0].ParameterType\r\n                                        break\r\n                                profileDataBandType = None\r\n                                if bandTypeEnumType is not None:\r\n                                    enumNames = list(System.Enum.GetNames(bandTypeEnumType))\r\n                                    matchedName = None\r\n                                    for n in enumNames:\r\n                                        if n.lower().replace(\" \", \"\") == \"profiledata\":\r\n                                            matchedName = n\r\n                                            break\r\n                                    if matchedName is not None:\r\n                                        profileDataBandType = System.Enum.Parse(bandTypeEnumType, matchedName)\r\n\r\n                                for bandType, bandStyleName in bandRequests:\r\n                                    if bandType not in bandsResolved:\r\n                                        continue\r\n                                    try:\r\n                                        if profileDataBandType is None:\r\n                                            raise Exception(\"Could not resolve BandType enum\")\r\n                                        currentBottom.Add(profileDataBandType, str(bandStyleName))\r\n                                        newItem = currentBottom[currentBottom.Count - 1]\r\n                                        try:\r\n                                            newItem.Gap = 0.0\r\n                                        except Exception as ex:\r\n                                            bandErrors.append(\"{0}: gap error: {1}\".format(bandType, ex))\r\n                                        bandsAdded.append(bandType)\r\n                                    except Exception as ex:\r\n                                        bandErrors.append(\"{0}: add failed: {1}\".format(bandType, ex))\r\n\r\n                                for i in range(originalBottomCount - 1, -1, -1):\r\n                                    try:\r\n                                        currentBottom.RemoveAt(i)\r\n                                    except Exception as ex:\r\n                                        bandErrors.append(\"Failed to remove original band {0}: {1}\".format(i, ex))\r\n\r\n                                profileViewEntity.Bands.SetBottomBandItems(currentBottom)\r\n                            except Exception as ex:\r\n                                bandErrors.append(\"Bottom band update failed: {0}\".format(ex))\r\n\r\n                            try:\r\n                                currentTop = profileViewEntity.Bands.GetTopBandItems()\r\n                                if currentTop is not None and currentTop.Count > 0:\r\n                                    topCountBefore = currentTop.Count\r\n                                    for i in range(topCountBefore - 1, -1, -1):\r\n                                        try:\r\n                                            currentTop.RemoveAt(i)\r\n                                        except Exception as ex:\r\n                                            bandErrors.append(\"Failed to remove top band {0}: {1}\".format(i, ex))\r\n                                    profileViewEntity.Bands.SetTopBandItems(currentTop)\r\n                            except Exception as ex:\r\n                                bandErrors.append(\"Top band clear failed: {0}\".format(ex))\r\n\r\n                            warnings = []\r\n                            if surfaceName and not surfaceMatched:\r\n                                warnings.append(\"surface '{0}' not found, used default\".format(surfaceName))\r\n                            if profileStyleName and not styleMatched:\r\n                                warnings.append(\"profile style '{0}' not found, used default\".format(profileStyleName))\r\n                            if profileViewStyleName and not pvStyleMatched:\r\n                                warnings.append(\"profile view style '{0}' not found, used default\".format(profileViewStyleName))\r\n                            if bandsAdded:\r\n                                warnings.append(\"bands added: \" + \", \".join(bandsAdded))\r\n                            if bandErrors:\r\n                                warnings.append(\"band errors: \" + \" | \".join(bandErrors))\r\n                            if profileLabelErrors:\r\n                                warnings.append(\"label cleanup errors: \" + \" | \".join(profileLabelErrors))\r\n                            if labelGroupDiag:\r\n                                warnings.append(\"label groups removed: \" + \" | \".join(labelGroupDiag))\r\n                            if offsetProfileErrors:\r\n                                warnings.append(\"offset profile: \" + \" | \".join(offsetProfileErrors))\r\n                            if warnings:\r\n                                errorMsg = \"Warning: \" + \"; \".join(warnings)\r\n\r\n                        tr.Commit()\r\n                    except Exception as ex:\r\n                        excType, excValue, excTb = sys.exc_info()\r\n                        lineNo = excTb.tb_lineno if excTb is not None else -1\r\n                        errorMsg = \"Line {0}: {1}: {2}\".format(lineNo, excType, excValue)\r\n                        tr.Abort()\r\n        else:\r\n            errorMsg = \"No insertion point specified.\"\r\n    else:\r\n        errorMsg = \"No profile name entered.\"\r\nelse:\r\n    errorMsg = \"No alignment selected.\"\r\n\r\nOUT = profileName, profileViewName, profileViewId, errorMsg",
+      "Engine": "IronPython2",
+      "VariableInputPorts": true,
+      "Id": "10430c4fddde47119265789b9d6fc461",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [
+        {
+          "Id": "cb52161c7a3047338c277ac81fc05bbc",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "de187128af6d4564a6036108b648a5bd",
+          "Name": "IN[1]",
+          "Description": "Input #1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "a6ce292cac33452babcb450bd382fe27",
+          "Name": "IN[2]",
+          "Description": "Input #2",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "25deea649c2048829ccc2e32429dad94",
+          "Name": "IN[3]",
+          "Description": "Input #3",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "3104dfcefc8e4c4da5de09e7f7a2786f",
+          "Name": "IN[4]",
+          "Description": "Input #4",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "7916d1ee6a634ad9ba92e05ce540a8c0",
+          "Name": "IN[5]",
+          "Description": "Input #5",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "89ca6125c7da42f281a777dada053cc1",
+          "Name": "IN[6]",
+          "Description": "Input #6",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "c2191355f611402fb25abb94cd0426d6",
+          "Name": "IN[7]",
+          "Description": "Input #7",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "4b58e35f15e842479b391d991f5681da",
+          "Name": "IN[8]",
+          "Description": "Input #8",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "19ffe3849e8846799fd4b51f1417e43c",
+          "Name": "IN[9]",
+          "Description": "Input #9",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "4a5188391c204c30a2896f296e910e3c",
+          "Name": "IN[10]",
+          "Description": "Input #10",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "c987d1bc60b147edadd10fa8ea989bca",
+          "Name": "IN[11]",
+          "Description": "Input #11",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "be59a91f29d34393af6c36eb0d65702f",
+          "Name": "",
+          "Description": "Python Script Output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.StringInput, CoreNodeModels",
+      "SerializedWidth": 0.0,
+      "SerializedHeight": 0.0,
+      "Id": "780f2eab09c54f81a1eb5efdde3c6649",
+      "NodeType": "StringInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "b8df0a38e2cb44459d2dca41ca316785",
+          "Name": "",
+          "Description": "String",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a string.",
+      "InputValue": "24974-MWP-EXISTING SURFACE"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.StringInput, CoreNodeModels",
+      "SerializedWidth": 0.0,
+      "SerializedHeight": 0.0,
+      "Id": "5a836b4881dc4b2ca095e2410aa570c5",
+      "NodeType": "StringInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "f3d2b021a3404813891d60627e6c56ff",
+          "Name": "",
+          "Description": "String",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a string.",
+      "InputValue": "MWP - SITE SECTION"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.StringInput, CoreNodeModels",
+      "SerializedWidth": 0.0,
+      "SerializedHeight": 0.0,
+      "Id": "aa810754b84d47409ee5bc17f01761ce",
+      "NodeType": "StringInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "16eff1e414314e188c4a1e443e150787",
+          "Name": "",
+          "Description": "String",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a string.",
+      "InputValue": "Profile 2 Levels"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.StringInput, CoreNodeModels",
+      "SerializedWidth": 0.0,
+      "SerializedHeight": 0.0,
+      "Id": "404a60cd170f422e9d98b2c7f4d4ace4",
+      "NodeType": "StringInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "20babff8982c4656b0f95076a0a362f1",
+          "Name": "",
+          "Description": "String",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a string.",
+      "InputValue": "Profile 1 Levels"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.StringInput, CoreNodeModels",
+      "SerializedWidth": 0.0,
+      "SerializedHeight": 0.0,
+      "Id": "110bedc68d66476b9f92a7dfe0a09b2a",
+      "NodeType": "StringInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "1940e1e4bcc0431d9a425419a77ca172",
+          "Name": "",
+          "Description": "String",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a string.",
+      "InputValue": "Level Difference"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.StringInput, CoreNodeModels",
+      "SerializedWidth": 0.0,
+      "SerializedHeight": 0.0,
+      "Id": "18ef09cdc74145e5b790292e1edd2761",
+      "NodeType": "StringInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "84ac13dea06943bd8299451e5b2fc35f",
+          "Name": "",
+          "Description": "String",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a string.",
+      "InputValue": "Chainage"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.StringInput, CoreNodeModels",
+      "SerializedWidth": 0.0,
+      "SerializedHeight": 0.0,
+      "Id": "8240a9dfe15443b1954a0686ae54257e",
+      "NodeType": "StringInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "defe18a3d4e84876aa1b9d304a9452dd",
+          "Name": "",
+          "Description": "String",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a string.",
+      "InputValue": "MWP-Existing Ground"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.DoubleInput, CoreNodeModels",
+      "NumberType": "Double",
+      "Id": "8e51b976a9a143eabc6d0954ef971f09",
+      "NodeType": "NumberInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "439b468d9fd845d6bfa9e1957c43992e",
+          "Name": "",
+          "Description": "Double",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a number.",
+      "InputValue": -1.0
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.DoubleInput, CoreNodeModels",
+      "NumberType": "Double",
+      "Id": "1aad0f461841457db1b57effaf2f16f9",
+      "NodeType": "NumberInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "1e1ff536553c4237879c0c2c90809f73",
+          "Name": "",
+          "Description": "Double",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a number.",
+      "InputValue": 5.0
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.DoubleInput, CoreNodeModels",
+      "NumberType": "Double",
+      "Id": "aacd89b2219d4fb69b8d925f47706cfa",
+      "NodeType": "NumberInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "7ae358cf58d6492198dfcc0e76cbef60",
+          "Name": "",
+          "Description": "Double",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a number.",
+      "InputValue": 2.0
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.DoubleInput, CoreNodeModels",
+      "NumberType": "Double",
+      "Id": "d489ee1074d04186b995ede3ef8603a7",
+      "NodeType": "NumberInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "a514040c8bc641f6aeb7c77394cf1c14",
+          "Name": "",
+          "Description": "Double",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a number.",
+      "InputValue": 12.0
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "WatchWidth": 200.0,
+      "WatchHeight": 200.0,
+      "Id": "da56626bce8849399813545355ec6f17",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "e30c0e94160845e7ac9c1c466a178c00",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "e9bae86c8adc40d8826893021cceb4c0",
+          "Name": "",
+          "Description": "Node output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualizes a node's output"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.StringInput, CoreNodeModels",
+      "SerializedWidth": 0.0,
+      "SerializedHeight": 0.0,
+      "Id": "a6bdf86b665c453cb994574bd89c6c12",
+      "NodeType": "StringInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "944bc3419d9c4ccea0e82894be6d864d",
+          "Name": "",
+          "Description": "String",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a string.",
+      "InputValue": "MWP-Road Design"
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "be59a91f29d34393af6c36eb0d65702f",
+      "End": "e30c0e94160845e7ac9c1c466a178c00",
+      "Id": "c912e8c242554edc8b4b3374c73f03f0",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "b8df0a38e2cb44459d2dca41ca316785",
+      "End": "cb52161c7a3047338c277ac81fc05bbc",
+      "Id": "c14f8ffeaacc4c5f8788b8ef67cf23d8",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "f3d2b021a3404813891d60627e6c56ff",
+      "End": "de187128af6d4564a6036108b648a5bd",
+      "Id": "7c800fb844e94fceb1caaac5bda10691",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "16eff1e414314e188c4a1e443e150787",
+      "End": "a6ce292cac33452babcb450bd382fe27",
+      "Id": "81b366987d274a658e48ebf3bbd2f697",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "20babff8982c4656b0f95076a0a362f1",
+      "End": "25deea649c2048829ccc2e32429dad94",
+      "Id": "b1207832cc22407bac400fec2840e52b",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "1940e1e4bcc0431d9a425419a77ca172",
+      "End": "3104dfcefc8e4c4da5de09e7f7a2786f",
+      "Id": "5d7b42fd37d3400bab18a3b061c9b0c9",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "84ac13dea06943bd8299451e5b2fc35f",
+      "End": "7916d1ee6a634ad9ba92e05ce540a8c0",
+      "Id": "82a96d6745394e75b26b5263af197dcf",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "defe18a3d4e84876aa1b9d304a9452dd",
+      "End": "89ca6125c7da42f281a777dada053cc1",
+      "Id": "c6e2a2e7f2ea4483b6cba606d55eb019",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "439b468d9fd845d6bfa9e1957c43992e",
+      "End": "c2191355f611402fb25abb94cd0426d6",
+      "Id": "91ad186877514633a0b7e717a23e4001",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "1e1ff536553c4237879c0c2c90809f73",
+      "End": "4b58e35f15e842479b391d991f5681da",
+      "Id": "cde98e3adb8d4404ac40e533fa5c6e25",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "7ae358cf58d6492198dfcc0e76cbef60",
+      "End": "19ffe3849e8846799fd4b51f1417e43c",
+      "Id": "7a5fd9dbf2f0464c8d13562b51888e07",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "a514040c8bc641f6aeb7c77394cf1c14",
+      "End": "4a5188391c204c30a2896f296e910e3c",
+      "Id": "da10f46149004672858dc87effa220c1",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "944bc3419d9c4ccea0e82894be6d864d",
+      "End": "c987d1bc60b147edadd10fa8ea989bca",
+      "Id": "2b07bcea1548498aaa02780df2ad313a",
+      "IsHidden": "False"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [
+    {
+      "Name": "DynamoIronPython2.7",
+      "Version": "3.2.1",
+      "ReferenceType": "Package",
+      "Nodes": [
+        "10430c4fddde47119265789b9d6fc461"
+      ]
+    }
+  ],
+  "EnableLegacyPolyCurveBehavior": false,
+  "Thumbnail": "",
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [
+    {
+      "ExtensionGuid": "28992e1d-abb9-417f-8b1b-05e053bee670",
+      "Name": "Properties",
+      "Version": "3.7",
+      "Data": {}
+    }
+  ],
+  "Author": "",
+  "Linting": {
+    "activeLinter": "None",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": true,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "3.7.0.11777",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "_Background Preview",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "ConnectorPins": [],
+    "NodeViews": [
+      {
+        "Id": "10430c4fddde47119265789b9d6fc461",
+        "Name": "Create Profile View",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 806.4484561279826,
+        "Y": 199.24486605163304
+      },
+      {
+        "Id": "780f2eab09c54f81a1eb5efdde3c6649",
+        "Name": "Surface_Name",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 50.0,
+        "Y": 250.0
+      },
+      {
+        "Id": "5a836b4881dc4b2ca095e2410aa570c5",
+        "Name": "Profile_View_Style",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -236.41788292171532,
+        "Y": 344.1066279234215
+      },
+      {
+        "Id": "aa810754b84d47409ee5bc17f01761ce",
+        "Name": "Band_Profile2Levels_Style",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 50.0,
+        "Y": 450.0
+      },
+      {
+        "Id": "404a60cd170f422e9d98b2c7f4d4ace4",
+        "Name": "Band_Profile1Levels_Style",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 50.0,
+        "Y": 550.0
+      },
+      {
+        "Id": "110bedc68d66476b9f92a7dfe0a09b2a",
+        "Name": "Band_LevelDifference_Style",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 50.0,
+        "Y": 650.0
+      },
+      {
+        "Id": "18ef09cdc74145e5b790292e1edd2761",
+        "Name": "Band_Chainage_Style",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 50.0,
+        "Y": 750.0
+      },
+      {
+        "Id": "8240a9dfe15443b1954a0686ae54257e",
+        "Name": "Profile_Style",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 50.0,
+        "Y": 850.0
+      },
+      {
+        "Id": "8e51b976a9a143eabc6d0954ef971f09",
+        "Name": "Offset_Distance",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 50.0,
+        "Y": 950.0
+      },
+      {
+        "Id": "1aad0f461841457db1b57effaf2f16f9",
+        "Name": "Weeding_Distance",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 51.83118379049165,
+        "Y": 1077.4677568573754
+      },
+      {
+        "Id": "aacd89b2219d4fb69b8d925f47706cfa",
+        "Name": "Angle_Threshold_Degrees",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 50.0,
+        "Y": 1180.0
+      },
+      {
+        "Id": "d489ee1074d04186b995ede3ef8603a7",
+        "Name": "Curve_Radius",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 35.68349423289726,
+        "Y": 1351.5825288355136
+      },
+      {
+        "Id": "da56626bce8849399813545355ec6f17",
+        "Name": "Watch",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 1014.9061110557957,
+        "Y": 196.6883239734688
+      },
+      {
+        "Id": "a6bdf86b665c453cb994574bd89c6c12",
+        "Name": "Profile_NewProfileNameInput",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 14.381893558848333,
+        "Y": -65.98350325339527
+      }
+    ],
+    "Annotations": [],
+    "X": 634.1846856112295,
+    "Y": 127.73151474934087,
+    "Zoom": 0.47847203119431947
+  }
+}

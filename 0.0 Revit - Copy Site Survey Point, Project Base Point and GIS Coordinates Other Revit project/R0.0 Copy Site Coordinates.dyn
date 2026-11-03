@@ -1,0 +1,269 @@
+{
+  "Uuid": "477ec7c8-2140-403e-b3dc-60958b3b0f3e",
+  "IsCustomNode": false,
+  "Description": "",
+  "Name": "9.0 Copy Site Coordinates",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [
+    {
+      "Id": "b8ecd8a71af940019ebc9c3cf0bd9255",
+      "Name": "Reference Revit file",
+      "Type": "string",
+      "Type2": "string",
+      "Value": "C:\\Users\\Conor.mcenery\\DC\\ACCDocs\\MWP.ie\\27038-FRD2A\\Project Files\\01-WIP\\01-CIVIL-CE\\01-MODELS-M3\\04-3D SUPPORT\\01-REF REV\\FRD2A-S11-SST_ALL.rvt",
+      "Description": "Allows you to select a file on the system and returns its file path"
+    },
+    {
+      "Id": "b1c9041ff70e4c3e9ecc4b1c30a79718",
+      "Name": "Unit (mm or M)",
+      "Type": "string",
+      "Type2": "string",
+      "Value": "M",
+      "Description": "Creates a string."
+    }
+  ],
+  "Outputs": [
+    {
+      "Id": "4827bd9308454138af89208eda3ac393",
+      "Name": "Watch",
+      "Type": "unknown",
+      "InitialValue": "",
+      "Description": "Visualizes a node's output"
+    }
+  ],
+  "Nodes": [
+    {
+      "ConcreteType": "CoreNodeModels.Input.Filename, CoreNodeModels",
+      "Id": "b8ecd8a71af940019ebc9c3cf0bd9255",
+      "NodeType": "ExtensionNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "d638dc21565947f99a3c0622968e4940",
+          "Name": "",
+          "Description": "File Path",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Allows you to select a file on the system and returns its file path",
+      "HintPath": "C:\\Users\\Conor.mcenery\\DC\\ACCDocs\\MWP.ie\\27038-FRD2A\\Project Files\\01-WIP\\01-CIVIL-CE\\01-MODELS-M3\\04-3D SUPPORT\\01-REF REV\\FRD2A-S11-SST_ALL.rvt",
+      "InputValue": "C:\\Users\\Conor.mcenery\\DC\\ACCDocs\\MWP.ie\\27038-FRD2A\\Project Files\\01-WIP\\01-CIVIL-CE\\01-MODELS-M3\\04-3D SUPPORT\\01-REF REV\\FRD2A-S11-SST_ALL.rvt"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.StringInput, CoreNodeModels",
+      "SerializedWidth": 0.0,
+      "SerializedHeight": 0.0,
+      "Id": "b1c9041ff70e4c3e9ecc4b1c30a79718",
+      "NodeType": "StringInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "05ef9031c8554c2abac15e12e40c68f5",
+          "Name": "",
+          "Description": "String",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a string.",
+      "InputValue": "M"
+    },
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "\"\"\"\nDynamo for Revit - Python Script node (engine: CPython3)\n\nCopies the Site Survey Point, Project Base Point, and GIS/geo coordinate\nsystem from a reference .rvt file into the current document, in one step -\nequivalent to Manage > Coordinates > Acquire Coordinates in the Revit UI.\n\nHow it works: temporarily links the reference file, calls\nDocument.AcquireCoordinates() against that link instance (this single call\nis what actually copies Survey Point, Project Base Point and the GIS\ncoordinate system together - there is no need to set each one separately),\nthen removes the temporary link so nothing permanent is left behind. Also\nsets the project's Length display format (Project Units > Common > Length)\nto match the chosen unit, and afterwards reads back the resulting Survey\nPoint position and reports it in that unit, so you can confirm what was\nactually acquired.\n\nInputs:\n  IN[0] : file path (string) to the reference .rvt to acquire coordinates from\n  IN[1] : Unit for the project's Length format and the reported coordinates -\n          \"mm\" or \"M\" (optional, default \"M\")\n\nOutput:\n  OUT : dict with \"Status\" on success (includes the reported coordinates) or \"Error\" on failure\n\"\"\"\nimport clr\nimport os\nimport math\n\nclr.AddReference(\"RevitAPI\")\nfrom Autodesk.Revit.DB import (\n    RevitLinkOptions, RevitLinkType, RevitLinkInstance, ModelPathUtils, XYZ,\n    FormatOptions, UnitTypeId, SymbolTypeId, SpecTypeId\n)\n\nclr.AddReference(\"RevitServices\")\nfrom RevitServices.Persistence import DocumentManager\nfrom RevitServices.Transactions import TransactionManager\n\nhost_doc = DocumentManager.Instance.CurrentDBDocument\n\nfile_path_str = IN[0]\nunit_str = IN[1] if len(IN) > 1 and IN[1] else \"M\"\n\noutput = {}\nis_valid = False\n\n\ndef _set_length_units(doc, unit_key):\n    # Same probing pattern as this library's \"set project units\" tool - the\n    # exact SymbolTypeId member name varies by Revit version/language, so try\n    # each known candidate rather than assuming one.\n    if unit_key == \"mm\":\n        unit_type_id = UnitTypeId.Millimeters\n        accuracy = 1.0\n        symbol_candidates = [\"Millimeter\", \"Millimeters\", \"MM\"]\n    else:\n        unit_type_id = UnitTypeId.Meters\n        accuracy = 0.001\n        symbol_candidates = [\"Meter\", \"Meters\", \"M\", \"MSup1\"]\n\n    units = doc.GetUnits()\n    format_options = FormatOptions(unit_type_id)\n    format_options.Accuracy = accuracy\n\n    symbol_id = None\n    for candidate in symbol_candidates:\n        if hasattr(SymbolTypeId, candidate):\n            symbol_id = getattr(SymbolTypeId, candidate)\n            break\n    if symbol_id is not None:\n        format_options.SetSymbolTypeId(symbol_id)\n\n    units.SetFormatOptions(SpecTypeId.Length, format_options)\n    doc.SetUnits(units)\n\nunit_key = str(unit_str).strip().lower()\nif unit_key in (\"mm\", \"millimeter\", \"millimetre\", \"millimeters\", \"millimetres\"):\n    ft_to_unit = 304.8\n    unit_label = \"mm\"\nelif unit_key in (\"m\", \"meter\", \"metre\", \"meters\", \"metres\"):\n    ft_to_unit = 0.3048\n    unit_label = \"M\"\nelse:\n    output[\"Error\"] = \"Unit '{}' not recognized - use 'mm' or 'M'.\".format(unit_str)\n    ft_to_unit = None\n    unit_label = None\n\nif ft_to_unit is None:\n    pass\nelif file_path_str is None:\n    output[\"Error\"] = \"IN[0] is blank. Connect a File Path (string) to IN[0].\"\nelif not isinstance(file_path_str, str):\n    output[\"Error\"] = \"IN[0] is the wrong format. Expected a string file path, got: \" + str(type(file_path_str))\nelif not file_path_str.strip():\n    output[\"Error\"] = \"IN[0] is blank. Connect a File Path (string) to IN[0].\"\nelif not file_path_str.lower().endswith(\".rvt\"):\n    output[\"Error\"] = \"IN[0] must point to a .rvt file. Got: \" + file_path_str\nelif not os.path.isfile(file_path_str):\n    output[\"Error\"] = \"File not found on disk: \" + file_path_str\nelse:\n    is_valid = True\n\nif is_valid:\n    model_path = ModelPathUtils.ConvertUserVisiblePathToModelPath(file_path_str)\n\n    TransactionManager.Instance.EnsureInTransaction(host_doc)\n\n    try:\n        # 1. Set the project's Length display format to match the chosen unit\n        # (Project Units > Common > Length).\n        _set_length_units(host_doc, unit_key)\n\n        # 2. Create/load the RevitLinkType for the reference file.\n        link_options = RevitLinkOptions(False)\n        link_type_result = RevitLinkType.Create(host_doc, model_path, link_options)\n        link_type_id = link_type_result.ElementId\n\n        # 3. Place a temporary RevitLinkInstance so it can be referenced by\n        # AcquireCoordinates (RevitLinkInstance.Create only takes\n        # (Document, ElementId) - there is no ImportPlacement overload).\n        link_instance = RevitLinkInstance.Create(host_doc, link_type_id)\n\n        # 4. This single call copies the Survey Point, Project Base Point,\n        # and GIS coordinate system from the linked file into host_doc -\n        # the same as Manage > Coordinates > Acquire Coordinates in the UI.\n        host_doc.AcquireCoordinates(link_instance.Id)\n\n        # 5. Clean up - remove the temporary link instance and link type so\n        # the acquired coordinate system is kept without a permanent link.\n        host_doc.Delete(link_instance.Id)\n        host_doc.Delete(link_type_id)\n\n        # 6. Read back the resulting Survey Point position (internal feet)\n        # and report it in the requested unit, so you can confirm what\n        # actually got acquired without having to check Manage > Coordinates.\n        pos = host_doc.ActiveProjectLocation.GetProjectPosition(XYZ.Zero)\n        ns_val = pos.NorthSouth * ft_to_unit\n        ew_val = pos.EastWest * ft_to_unit\n        elev_val = pos.Elevation * ft_to_unit\n        angle_deg = math.degrees(pos.Angle)  # pos.Angle is radians, in Revit's raw parameter convention\n\n        TransactionManager.Instance.TransactionTaskDone()\n\n        output[\"Status\"] = (\n            \"Survey Point, Project Base Point and GIS coordinate system acquired from '{}'. \"\n            \"Project Length units set to {unit}. \"\n            \"Resulting Survey Point - N/S: {:.3f} {unit}, E/W: {:.3f} {unit}, Elev: {:.3f} {unit}, \"\n            \"Angle (Revit's raw parameter value): {:.4f} deg.\"\n        ).format(\n            os.path.basename(file_path_str), ns_val, ew_val, elev_val, angle_deg, unit=unit_label\n        )\n\n    except Exception as e:\n        TransactionManager.Instance.TransactionTaskDone()\n        output[\"Error\"] = \"Failed to acquire coordinates: \" + str(e)\n\nOUT = output\n",
+      "Engine": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "1958a41b07984f06970541e67fc63159",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [
+        {
+          "Id": "4449b77c4bb8427ca7e17bb4ad2052fa",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "b3ea95e903fa42e3b26dc771b1634a03",
+          "Name": "IN[1]",
+          "Description": "Input #1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "9202ce44879948b298d66fee35cfe4e7",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "WatchWidth": 200.0,
+      "WatchHeight": 200.0,
+      "Id": "4827bd9308454138af89208eda3ac393",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "b6ac87e77a07475b81db96740d8b6e15",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "cf7e6ce34a9b4b8f9e2a7b6c5d4e3f2a",
+          "Name": "",
+          "Description": "Watch contents",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualizes a node's output"
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "d638dc21565947f99a3c0622968e4940",
+      "End": "4449b77c4bb8427ca7e17bb4ad2052fa",
+      "Id": "74d01fc33a394b9e87fd8178dfee5ad8",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "05ef9031c8554c2abac15e12e40c68f5",
+      "End": "b3ea95e903fa42e3b26dc771b1634a03",
+      "Id": "a6cacb48825047bc9c10b31f13017f7e",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "9202ce44879948b298d66fee35cfe4e7",
+      "End": "b6ac87e77a07475b81db96740d8b6e15",
+      "Id": "6f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c",
+      "IsHidden": "False"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [],
+  "EnableLegacyPolyCurveBehavior": true,
+  "Thumbnail": "",
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [
+    {
+      "ExtensionGuid": "28992e1d-abb9-417f-8b1b-05e053bee670",
+      "Name": "Properties",
+      "Version": "3.7",
+      "Data": {}
+    },
+    {
+      "ExtensionGuid": "DFBD9CC0-DB40-457A-939E-8C8555555A9D",
+      "Name": "Generative Design",
+      "Version": "9.3",
+      "Data": {}
+    }
+  ],
+  "Author": "",
+  "Linting": {
+    "activeLinter": "None",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": true,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "3.7.0.11777",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "_Background Preview",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "ConnectorPins": [],
+    "NodeViews": [
+      {
+        "Id": "b8ecd8a71af940019ebc9c3cf0bd9255",
+        "Name": "Reference Revit file",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -35.0,
+        "Y": 79.0
+      },
+      {
+        "Id": "b1c9041ff70e4c3e9ecc4b1c30a79718",
+        "Name": "Unit (mm or M)",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 100.0,
+        "Y": 280.0
+      },
+      {
+        "Id": "1958a41b07984f06970541e67fc63159",
+        "Name": "Copy Site Coordinates",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 500.0,
+        "Y": 150.0
+      },
+      {
+        "Id": "4827bd9308454138af89208eda3ac393",
+        "Name": "Watch",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": true,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 950.0,
+        "Y": 150.0
+      }
+    ],
+    "Annotations": [],
+    "X": 343.8412925629905,
+    "Y": 214.84670882303942,
+    "Zoom": 0.41299898049384776
+  }
+}

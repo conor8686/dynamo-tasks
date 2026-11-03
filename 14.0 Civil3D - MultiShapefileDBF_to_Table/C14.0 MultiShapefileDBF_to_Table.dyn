@@ -1,0 +1,237 @@
+{
+  "Uuid": "0cb37038-b579-4974-9449-2625b04e4569",
+  "IsCustomNode": false,
+  "Description": "Point at a folder containing several shapefiles and get one combined table back (header row + one row per feature across all .shp layers, tagged by SOURCE_LAYER), plus a saved combined_shapefile_table.csv written into a separate folder you choose. No external libraries required.",
+  "Name": "MultiShapefileDBF_to_Table",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "CoreNodeModels.Input.Directory, CoreNodeModels",
+      "Id": "056c83540d434a3783ca75dc350f4ba9",
+      "NodeType": "ExtensionNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "df41f8d12c3340e3b93a18e1fd6fc25d",
+          "Name": "",
+          "Description": "Directory Path",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Allows you to select a directory on the system and returns its path",
+      "HintPath": "N:\\24974\\01 WIP\\01 - Drawings and Models\\01 - Civil\\03 - Sketch SK\\05 - Grid Team\\01 - GIS SKETCH WORK\\03 - SHPs\\Water_Sewer_SHP",
+      "InputValue": "N:\\24974\\01 WIP\\01 - Drawings and Models\\01 - Civil\\03 - Sketch SK\\05 - Grid Team\\01 - GIS SKETCH WORK\\03 - SHPs\\Water_Sewer_SHP"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.Directory, CoreNodeModels",
+      "Id": "4a0dfd57ed5d480c997bbc227e1bd63f",
+      "NodeType": "ExtensionNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "bfaeb0329f324029a412e209c5eecc38",
+          "Name": "",
+          "Description": "Directory Path",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Allows you to select a directory on the system and returns its path",
+      "HintPath": "C:\\Users\\Conor.mcenery\\Documents",
+      "InputValue": "C:\\Users\\Conor.mcenery\\Documents"
+    },
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "import struct\nimport os\nimport glob\nimport csv\n\nfolder = IN[0]\nout_folder = IN[1] if IN[1] else folder\n\ndef read_dbf(path):\n    with open(path, 'rb') as f:\n        data = f.read()\n\n    num_records = struct.unpack('<I', data[4:8])[0]\n    header_size = struct.unpack('<H', data[8:10])[0]\n    record_size = struct.unpack('<H', data[10:12])[0]\n\n    fields = []\n    pos = 32\n    while data[pos:pos+1] != b'\\r':\n        name = data[pos:pos+11].split(b'\\x00')[0].decode('latin-1')\n        ftype = data[pos+11:pos+12].decode('latin-1')\n        flen = data[pos+16]\n        fields.append((name, ftype, flen))\n        pos += 32\n\n    records = []\n    rec_start = header_size\n    for _ in range(num_records):\n        rec = data[rec_start:rec_start+record_size]\n        rec_start += record_size\n        if rec[0:1] == b'*':\n            continue\n        row = {}\n        offset = 1\n        for name, ftype, flen in fields:\n            raw = rec[offset:offset+flen].decode('latin-1', errors='replace').strip()\n            offset += flen\n            if ftype in ('N', 'F'):\n                try:\n                    row[name] = float(raw) if raw not in ('', '.') else None\n                except ValueError:\n                    row[name] = raw\n            else:\n                row[name] = raw\n        records.append(row)\n    return [f[0] for f in fields], records\n\nshp_paths = sorted(glob.glob(os.path.join(folder, '*.shp')))\n\nall_headers = []\nseen = set()\ntagged_records = []\n\nfor shp_path in shp_paths:\n    dbf_path = os.path.splitext(shp_path)[0] + '.dbf'\n    layer_name = os.path.splitext(os.path.basename(shp_path))[0]\n    if not os.path.exists(dbf_path):\n        continue\n    headers, records = read_dbf(dbf_path)\n    for h in headers:\n        if h not in seen:\n            seen.add(h)\n            all_headers.append(h)\n    for r in records:\n        tagged_records.append((layer_name, r))\n\nfinal_headers = ['SOURCE_LAYER'] + all_headers\ntable = [final_headers]\nfor layer_name, r in tagged_records:\n    table.append([layer_name] + [r.get(h) for h in all_headers])\n\ncsv_path = os.path.join(out_folder, 'combined_shapefile_table.csv')\nwith open(csv_path, 'w', newline='', encoding='utf-8-sig') as f:\n    writer = csv.writer(f)\n    for row in table:\n        writer.writerow(['' if v is None else v for v in row])\n\nOUT = table, csv_path",
+      "Engine": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "ca53fefd756a4abc8eda44a6d1af23a5",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [
+        {
+          "Id": "8d418f740fe8418ebc9a204c92c43394",
+          "Name": "IN[0]",
+          "Description": "Input#0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "53f3c759a3a24a09a510e9730d497770",
+          "Name": "IN[1]",
+          "Description": "Input#1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "cf05125c79f644838822085de722ba24",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "WatchWidth": 200.0,
+      "WatchHeight": 200.0,
+      "Id": "20d6fff1d45348bc8026374cc30dc8d9",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "f74d7fdc9e6b49f6b7fd726f7c2628aa",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "74ffbe9854244e0882eaff6677eaa6a8",
+          "Name": "",
+          "Description": "Node output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualizes a node's output"
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "df41f8d12c3340e3b93a18e1fd6fc25d",
+      "End": "8d418f740fe8418ebc9a204c92c43394",
+      "Id": "bfc01833a7e244d7a166513d66398065",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "bfaeb0329f324029a412e209c5eecc38",
+      "End": "53f3c759a3a24a09a510e9730d497770",
+      "Id": "cb34d2be75d04bf6885284243c56282b",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "cf05125c79f644838822085de722ba24",
+      "End": "f74d7fdc9e6b49f6b7fd726f7c2628aa",
+      "Id": "a3471730d9ca4402870e28bd01539532",
+      "IsHidden": "False"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [],
+  "EnableLegacyPolyCurveBehavior": true,
+  "Thumbnail": "",
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [
+    {
+      "ExtensionGuid": "28992e1d-abb9-417f-8b1b-05e053bee670",
+      "Name": "Properties",
+      "Version": "3.3",
+      "Data": {}
+    }
+  ],
+  "Author": "",
+  "Linting": {
+    "activeLinter": "None",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": true,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "3.7.0.11777",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "_Background Preview",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "ConnectorPins": [],
+    "NodeViews": [
+      {
+        "Id": "056c83540d434a3783ca75dc350f4ba9",
+        "Name": "Source Folder (shapefiles)",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 100.0,
+        "Y": 120.0
+      },
+      {
+        "Id": "4a0dfd57ed5d480c997bbc227e1bd63f",
+        "Name": "Output Folder (csv destination)",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 100.0,
+        "Y": 280.0
+      },
+      {
+        "Id": "ca53fefd756a4abc8eda44a6d1af23a5",
+        "Name": "Python Script",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 450.0,
+        "Y": 180.0
+      },
+      {
+        "Id": "20d6fff1d45348bc8026374cc30dc8d9",
+        "Name": "Watch",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 900.0,
+        "Y": 200.0
+      }
+    ],
+    "Annotations": [],
+    "X": 0.0,
+    "Y": 0.0,
+    "Zoom": 1.0
+  }
+}
