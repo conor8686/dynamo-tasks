@@ -1,0 +1,440 @@
+{
+  "Uuid": "61080772-deb9-43f6-a2fc-897653314c9d",
+  "IsCustomNode": false,
+  "Description": "Run the graph, pick any georeferenced TIF in the Open dialog, confirm the coordinate check, and the image is attached in Civil 3D at true position and scale (metres).",
+  "Name": "C10.0 Civil3D_Attach_Image_Exact_Scale_V28",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [
+    {
+      "Id": "75bcd320318e464a90ed229fe5e5e13a",
+      "Name": "Layer for image",
+      "Type": "string",
+      "Type2": "string",
+      "Value": "AERIAL_IMAGE",
+      "Description": "Creates a string."
+    },
+    {
+      "Id": "385fb681f0014c87aae292a84175c1b6",
+      "Name": "Create",
+      "Type": "boolean",
+      "Type2": "boolean",
+      "Value": "true",
+      "Description": "Enables selection between True and False"
+    }
+  ],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "CoreNodeModels.Input.StringInput, CoreNodeModels",
+      "SerializedWidth": 0.0,
+      "SerializedHeight": 0.0,
+      "Id": "75bcd320318e464a90ed229fe5e5e13a",
+      "NodeType": "StringInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "d427a961e9674cec940d6aa2d0bdc4fb",
+          "Name": "",
+          "Description": "Output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a string.",
+      "InputValue": "AERIAL_IMAGE"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.BoolSelector, CoreNodeModels",
+      "Id": "385fb681f0014c87aae292a84175c1b6",
+      "NodeType": "BooleanInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "c6de03cdb38e41d497bb8b3ff39eb9b4",
+          "Name": "",
+          "Description": "Output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Enables selection between True and False",
+      "InputValue": true
+    },
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "import os\r\nimport struct\r\n\r\n# Civil 3D Dynamo (CPython3) - write an AutoCAD .scr that attaches a north-up\r\n# georeferenced TIFF at exact position and scale. Uses no .NET libraries. Drawing units must be metres.\r\n# IN[0] = layer name, IN[1] = Create (True attaches). The TIF is picked when the graph runs.\r\n\r\nTYPE_SIZES = {1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 6: 1, 7: 1, 8: 2, 9: 4, 10: 8, 11: 4, 12: 8, 16: 8}\r\nTYPE_FMT = {1: 'B', 3: 'H', 4: 'I', 6: 'b', 8: 'h', 9: 'i', 11: 'f', 12: 'd', 16: 'Q'}\r\n\r\n\r\ndef tiff_info(path):\r\n    with open(path, 'rb') as f:\r\n        hdr = f.read(8)\r\n        if hdr[:2] not in (b'II', b'MM'):\r\n            raise ValueError('Not a TIFF file')\r\n        bo = '<' if hdr[:2] == b'II' else '>'\r\n        magic = struct.unpack(bo + 'H', hdr[2:4])[0]\r\n        if magic == 43:\r\n            raise ValueError('BigTIFF (>4 GB format) - AutoCAD cannot attach it. '\r\n                             'Re-export as a standard TIFF or split into tiles.')\r\n        if magic != 42:\r\n            raise ValueError('Unsupported TIFF format')\r\n\r\n        f.seek(struct.unpack(bo + 'I', hdr[4:8])[0])\r\n        count = struct.unpack(bo + 'H', f.read(2))[0]\r\n        tags = {}\r\n        for _ in range(count):\r\n            tag, typ, num, val = struct.unpack(bo + 'HHI4s', f.read(12))\r\n            if typ not in TYPE_FMT:\r\n                continue\r\n            size = TYPE_SIZES[typ] * num\r\n            if size > 4:\r\n                here = f.tell()\r\n                f.seek(struct.unpack(bo + 'I', val)[0])\r\n                data = f.read(size)\r\n                f.seek(here)\r\n            else:\r\n                data = val[:size]\r\n            if len(data) == size:\r\n                tags[tag] = struct.unpack(bo + TYPE_FMT[typ] * num, data)\r\n    return tags\r\n\r\n\r\ndef geokeys(tags):\r\n    \"\"\"Return {keyid: value} for short-valued GeoKeys (tag 34735).\"\"\"\r\n    d = tags.get(34735)\r\n    out = {}\r\n    if not d or len(d) < 4:\r\n        return out\r\n    n = d[3]\r\n    for k in range(n):\r\n        e = d[4 + 4 * k: 8 + 4 * k]\r\n        if len(e) == 4 and e[1] == 0:\r\n            out[e[0]] = e[3]\r\n    return out\r\n\r\n\r\ndef world_file(path):\r\n    base, ext = os.path.splitext(path)\r\n    for name in (base + '.tfw', base + '.tifw', base + '.wld', path + 'w'):\r\n        if os.path.isfile(name):\r\n            with open(name) as f:\r\n                v = [float(x) for x in f.read().split()]\r\n            if len(v) < 6:\r\n                raise ValueError('World file needs six numbers: ' + name)\r\n            a, d, b, e, x, y = v[:6]\r\n            if abs(b) > 1e-10 or abs(d) > 1e-10:\r\n                raise ValueError('Rotated world file not supported')\r\n            if a <= 0 or e >= 0:\r\n                raise ValueError('Expected positive X and negative Y pixel size in world file')\r\n            # world file references the CENTRE of the top-left pixel\r\n            return x - a / 2.0, y - e / 2.0, a, -e, os.path.basename(name)\r\n    return None\r\n\r\n\r\ndef georef(path, tags):\r\n    keys = geokeys(tags)\r\n    warnings = []\r\n    if keys.get(1024) == 2:\r\n        warnings.append('WARNING: GeoTIFF is in a GEOGRAPHIC CRS (lat/long degrees). '\r\n                        'It will land near 0,0 at tiny size. Reproject to your metric grid '\r\n                        '(e.g. ITM EPSG:2157) before attaching.')\r\n\r\n    wf = world_file(path)\r\n    if wf:\r\n        left, top, sx, sy, src = wf\r\n        return left, top, sx, sy, 'World file ' + src, warnings\r\n\r\n    if 34264 in tags:\r\n        m = tags[34264]\r\n        if abs(m[1]) > 1e-12 or abs(m[4]) > 1e-12:\r\n            raise ValueError('GeoTIFF is rotated (transform matrix) - not supported')\r\n        sx, sy = m[0], -m[5]\r\n        left, top = m[3], m[7]\r\n        src = 'GeoTIFF transform matrix'\r\n    elif 33550 in tags and 33922 in tags:\r\n        sx, sy = tags[33550][:2]\r\n        i, j, k, x, y, z = tags[33922][:6]\r\n        left = x - i * sx\r\n        top = y + j * sy\r\n        src = 'GeoTIFF pixel scale + tiepoint'\r\n    else:\r\n        raise ValueError('No georeference found: TIFF has no GeoTIFF tags and no .tfw next to it')\r\n\r\n    if sx <= 0 or sy <= 0:\r\n        raise ValueError('Invalid GeoTIFF pixel scale')\r\n    if keys.get(1025) == 2:  # RasterPixelIsPoint: tiepoint is pixel centre\r\n        left -= sx / 2.0\r\n        top += sy / 2.0\r\n        src += ' (PixelIsPoint)'\r\n    return left, top, sx, sy, src, warnings\r\n\r\n\r\ndef format_checks(tags):\r\n    \"\"\"AutoCAD only draws ordinary 1/8-bit bitonal, grey, palette or RGB(A) images.\"\"\"\r\n    bits = tags.get(258, (1,))\r\n    spp = tags.get(277, (1,))[0]\r\n    fmt = tags.get(339, (1,))[0]\r\n    comp = tags.get(259, (1,))[0]\r\n    photo = tags.get(262, (None,))[0]\r\n    comp_names = {1: 'none', 5: 'LZW', 7: 'JPEG', 8: 'Deflate', 32946: 'Deflate',\r\n                  32773: 'PackBits', 34887: 'LERC', 50000: 'ZSTD', 50001: 'WebP', 34925: 'LZMA'}\r\n    desc = 'Format: {} band(s), {}-bit, sample type {}, compression {}'.format(\r\n        spp, bits[0], {1: 'uint', 2: 'int', 3: 'float'}.get(fmt, fmt),\r\n        comp_names.get(comp, comp))\r\n    problems = []\r\n    if fmt == 3:\r\n        problems.append('32-bit FLOAT data (a DEM/analysis raster, not a picture)')\r\n    elif max(bits) > 8:\r\n        problems.append('{}-bit per band (AutoCAD needs 8-bit)'.format(max(bits)))\r\n    if spp > 4 or (spp == 2):\r\n        problems.append('{} bands (AutoCAD needs 1, 3 or 4)'.format(spp))\r\n    if comp in (34887, 50000, 50001, 34925, 8, 32946):\r\n        problems.append('{} compression may not be readable by AutoCAD'.format(comp_names[comp]))\r\n    if photo == 6 and comp != 7:\r\n        problems.append('YCbCr colour space')\r\n    out = [desc]\r\n    if problems:\r\n        out.append('WARNING - AutoCAD will probably show an EMPTY or blank image: ' +\r\n                   '; '.join(problems) + '. Re-export as 8-bit RGB, LZW or no compression '\r\n                   '(QGIS: Export > Save As > Rendered image; GDAL: '\r\n                   'gdal_translate -ot Byte -scale -co COMPRESS=LZW in.tif out.tif).')\r\n    return out\r\n\r\n\r\nCRS_NAMES = {2157: 'Irish Transverse Mercator (ITM)', 29902: 'Irish Grid (TM65)',\r\n             29903: 'Irish Grid (TM75)', 27700: 'British National Grid',\r\n             3857: 'Web Mercator', 4326: 'WGS84 lat/long'}\r\n\r\n\r\ndef crs_text(tags):\r\n    keys = geokeys(tags)\r\n    code = keys.get(3072) or keys.get(2048)\r\n    if code and code != 32767:\r\n        return 'Grid: EPSG:{} {}'.format(code, CRS_NAMES.get(code, ''))\r\n    if keys:\r\n        return 'Grid: user-defined in GeoTIFF (no EPSG code)'\r\n    return 'Grid: not stated in file (world file only) - make sure it matches the drawing'\r\n\r\n\r\ndef position_checks(left, bottom, w, h):\r\n    out = []\r\n    if abs(left) < 1000 and abs(bottom) < 1000:\r\n        out.append('WARNING: image sits near 0,0 - the TIF is probably NOT coordinated '\r\n                   'to a real grid.')\r\n    if w < 1 or h < 1:\r\n        out.append('WARNING: image is under 1 m across - coordinates are probably degrees, not metres.')\r\n    return out\r\n\r\n\r\ndef analyse(path):\r\n    tags = tiff_info(path)\r\n    if 256 not in tags or 257 not in tags:\r\n        raise ValueError('TIFF missing width/height tags')\r\n    cols = int(tags[256][0])\r\n    rows = int(tags[257][0])\r\n    left, top, sx, sy, src, warn = georef(path, tags)\r\n    bottom = top - rows * sy\r\n    w, h = cols * sx, rows * sy\r\n    info = [\r\n        'COORDINATES: OK - georeferenced',\r\n        'Source: ' + src,\r\n        crs_text(tags),\r\n        'Pixels: {} x {}'.format(cols, rows),\r\n        'Bottom-left: {:.3f}, {:.3f}'.format(left, bottom),\r\n        'Top-right:   {:.3f}, {:.3f}'.format(left + w, top),\r\n        'Size: {:.3f} m x {:.3f} m'.format(w, h),\r\n        'Pixel size: X={:.6f}, Y={:.6f}'.format(sx, sy),\r\n    ] + format_checks(tags) + warn + position_checks(left, bottom, w, h)\r\n    return dict(left=left, bottom=bottom, width=w, height=h, sx=sx, sy=sy, info=info)\r\n\r\n\r\ndef lisp_str(t):\r\n    return '\"' + t.replace('\\\\', '/').replace('\"', '') + '\"'\r\n\r\n\r\ndef write_script(path, layer, g):\r\n    x, y = g['left'], g['bottom']\r\n    sx, sy = g['sx'], g['sy']\r\n    x2, y2 = x + g['width'], y + g['height']\r\n    lisp = (\r\n        '(progn (vl-load-com)'\r\n        ' (command \"_.-LAYER\" \"_Thaw\" {l} \"_ON\" {l} \"_Make\" {l} \"\")'\r\n        ' (setvar \"IMAGEFRAME\" 1)'\r\n        ' (setq ms (vla-get-ModelSpace (vla-get-ActiveDocument (vlax-get-acad-object))))'\r\n        ' (setq img (vl-catch-all-apply (function vla-AddRaster)'\r\n        ' (list ms {p} (vlax-3d-point {x:.6f} {y:.6f} 0.0) 1.0 0.0)))'\r\n        ' (if (vl-catch-all-error-p img)'\r\n        ' (princ (strcat \"\\\\nERROR attaching image: \" (vl-catch-all-error-message img)))'\r\n        ' (progn'\r\n        ' (vla-put-Layer img {l})'\r\n        ' (setq e (vlax-vla-object->ename img) ed (entget e))'\r\n        ' (setq ed (subst (list 10 {x:.6f} {y:.6f} 0.0) (assoc 10 ed) ed))'\r\n        ' (setq ed (subst (list 11 {sx:.12f} 0.0 0.0) (assoc 11 ed) ed))'\r\n        ' (setq ed (subst (list 12 0.0 {sy:.12f} 0.0) (assoc 12 ed) ed))'\r\n        ' (entmod ed) (entupd e)'\r\n        ' (command \"_.ZOOM\" \"_Window\" (list {x:.3f} {y:.3f}) (list {x2:.3f} {y2:.3f}))'\r\n        ' (princ \"\\\\nIMAGE ATTACHED AT EXACT SCALE\")))'\r\n        ' (princ))'\r\n    ).format(p=lisp_str(path), l=lisp_str(layer), x=x, y=y, sx=sx, sy=sy, x2=x2, y2=y2)\r\n    lines = [lisp]\r\n    out = os.path.splitext(path)[0] + '_attach.scr'\r\n    # plain ANSI, no BOM: a BOM breaks the first command of an AutoCAD script\r\n    with open(out, 'w', encoding='mbcs' if os.name == 'nt' else 'latin-1', newline='\\r\\n') as f:\r\n        f.write('\\n'.join(lines) + '\\n')\r\n    return out\r\n\r\n\r\nLAST_DIR_FILE = os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')),\r\n                             'C3D_AttachTif_lastfolder.txt')\r\n\r\n\r\ndef pick_tif():\r\n    \"\"\"Standard Windows Open dialog (comdlg32 via ctypes - no .NET, no tkinter).\"\"\"\r\n    import ctypes\r\n    from ctypes import wintypes\r\n\r\n    class OPENFILENAMEW(ctypes.Structure):\r\n        _fields_ = [('lStructSize', wintypes.DWORD), ('hwndOwner', wintypes.HWND),\r\n                    ('hInstance', wintypes.HINSTANCE), ('lpstrFilter', ctypes.c_void_p),\r\n                    ('lpstrCustomFilter', ctypes.c_void_p), ('nMaxCustFilter', wintypes.DWORD),\r\n                    ('nFilterIndex', wintypes.DWORD), ('lpstrFile', ctypes.c_void_p),\r\n                    ('nMaxFile', wintypes.DWORD), ('lpstrFileTitle', ctypes.c_void_p),\r\n                    ('nMaxFileTitle', wintypes.DWORD), ('lpstrInitialDir', ctypes.c_void_p),\r\n                    ('lpstrTitle', ctypes.c_void_p), ('Flags', wintypes.DWORD),\r\n                    ('nFileOffset', wintypes.WORD), ('nFileExtension', wintypes.WORD),\r\n                    ('lpstrDefExt', ctypes.c_void_p), ('lCustData', wintypes.LPARAM),\r\n                    ('lpfnHook', ctypes.c_void_p), ('lpTemplateName', ctypes.c_void_p),\r\n                    ('pvReserved', ctypes.c_void_p), ('dwReserved', wintypes.DWORD),\r\n                    ('FlagsEx', wintypes.DWORD)]\r\n\r\n    start = ''\r\n    try:\r\n        with open(LAST_DIR_FILE) as f:\r\n            start = f.read().strip()\r\n    except Exception:\r\n        pass\r\n    if not os.path.isdir(start):\r\n        start = os.path.join(os.path.expanduser('~'), 'Documents')\r\n\r\n    filt = ctypes.create_unicode_buffer('TIFF images (*.tif;*.tiff)\\0*.tif;*.tiff\\0All files (*.*)\\0*.*\\0\\0')\r\n    file_buf = ctypes.create_unicode_buffer(1024)\r\n    init = ctypes.create_unicode_buffer(start)\r\n    title = ctypes.create_unicode_buffer('Select the georeferenced TIF to attach')\r\n\r\n    ofn = OPENFILENAMEW()\r\n    ofn.lStructSize = ctypes.sizeof(OPENFILENAMEW)\r\n    ofn.hwndOwner = ctypes.windll.user32.GetForegroundWindow()  # Dynamo / Player window\r\n    ofn.lpstrFilter = ctypes.addressof(filt)\r\n    ofn.nFilterIndex = 1\r\n    ofn.lpstrFile = ctypes.addressof(file_buf)\r\n    ofn.nMaxFile = 1024\r\n    ofn.lpstrInitialDir = ctypes.addressof(init)\r\n    ofn.lpstrTitle = ctypes.addressof(title)\r\n    ofn.Flags = 0x00080000 | 0x00001000 | 0x00000800 | 0x00000008  # EXPLORER|FILEMUSTEXIST|PATHMUSTEXIST|NOCHANGEDIR\r\n\r\n    if not ctypes.windll.comdlg32.GetOpenFileNameW(ctypes.byref(ofn)):\r\n        return None\r\n    path = file_buf.value\r\n    try:\r\n        with open(LAST_DIR_FILE, 'w') as f:\r\n            f.write(os.path.dirname(path))\r\n    except Exception:\r\n        pass\r\n    return path\r\n\r\n\r\ndef run():\r\n    layer = str(IN[0] or 'AERIAL_IMAGE').strip() or 'AERIAL_IMAGE'\r\n    try:\r\n        path = pick_tif()\r\n    except Exception as ex:\r\n        return ['ERROR: could not open the file picker: ' + str(ex)]\r\n    if not path:\r\n        return ['CANCELLED: no TIF selected.']\r\n    if not os.path.isfile(path):\r\n        return ['ERROR: TIFF not found: ' + path]\r\n    if not path.lower().endswith(('.tif', '.tiff')):\r\n        return ['ERROR: Select a .tif or .tiff file']\r\n    try:\r\n        g = analyse(path)\r\n        if not IN[1]:\r\n            return ['File: ' + path] + g['info'] + ['Check only (Create = False) - nothing attached.']\r\n        out = write_script(path, layer, g)\r\n        return ['File: ' + path] + g['info'] + [\r\n            'SCRIPT CREATED: ' + out,\r\n            'Node 2 runs it automatically. If node 2 errors: type SCRIPT and pick this file.',\r\n            'Running it again adds another copy of the image.',\r\n        ]\r\n    except Exception as ex:\r\n        return ['ERROR: ' + str(ex)]\r\n\r\n\r\nOUT = run()\r\n",
+      "Engine": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "00571fd97aa34b0d9ecb86edd6f3e005",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [
+        {
+          "Id": "050e6c1d68df40d1b60d08cc7da1f526",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "12a0899ce70949bf91b3745fd9b85870",
+          "Name": "IN[1]",
+          "Description": "Input #1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "e61676d4f7414131be662c645ae38b32",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "WatchWidth": 200.0,
+      "WatchHeight": 250.0,
+      "Id": "f44b2a444f8b4d07a37f5ac4f0fae93d",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "1540c3918bf24f3db08cfd5fb7c90830",
+          "Name": "",
+          "Description": "Input",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "215af2e1ea2e4cacb2f17753568648b6",
+          "Name": "",
+          "Description": "Output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualizes a node's output"
+    },
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "# Shows a coordinate-check message in Civil 3D, then (on Yes) hands the SCRIPT\r\n# command to the Civil 3D window via a Windows WM_COPYDATA message (no .NET).\r\n# IN[0] = output list from the \"Write .scr\" node\r\nimport os\r\nimport ctypes\r\nfrom ctypes import wintypes\r\n\r\nuser32 = ctypes.windll.user32\r\nlines = [str(l) for l in (IN[0] if isinstance(IN[0], list) else [IN[0]])]\r\ntag = 'SCRIPT CREATED: '\r\nscr = None\r\nfor l in lines:\r\n    if l.startswith(tag):\r\n        scr = l[len(tag):]\r\n\r\nMB_OK, MB_YESNO, IDYES = 0x0, 0x4, 6\r\nICON_ERR, ICON_Q, ICON_WARN, ICON_INFO = 0x10, 0x20, 0x30, 0x40\r\nTOP = 0x40000 | 0x10000  # MB_TOPMOST | MB_SETFOREGROUND - never hidden behind windows\r\n\r\n\r\nclass COPYDATASTRUCT(ctypes.Structure):\r\n    _fields_ = [('dwData', ctypes.c_size_t),\r\n                ('cbData', wintypes.DWORD),\r\n                ('lpData', ctypes.c_void_p)]\r\n\r\n\r\ndef find_cad_window():\r\n    pid = os.getpid()\r\n    found = []\r\n    PROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)\r\n\r\n    def cb(hwnd, lparam):\r\n        p = wintypes.DWORD()\r\n        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(p))\r\n        if p.value == pid and user32.IsWindowVisible(hwnd) and not user32.GetWindow(hwnd, 4):\r\n            n = user32.GetWindowTextLengthW(hwnd)\r\n            buf = ctypes.create_unicode_buffer(n + 1)\r\n            user32.GetWindowTextW(hwnd, buf, n + 1)\r\n            t = buf.value\r\n            if 'Dynamo' not in t and ('Autodesk' in t or 'Civil 3D' in t or 'AutoCAD' in t):\r\n                found.append((hwnd, t))\r\n        return True\r\n\r\n    user32.EnumWindows(PROC(cb), 0)\r\n    return found[0] if found else (None, None)\r\n\r\n\r\ndef msg(text, title, flags, owner=None):\r\n    return user32.MessageBoxW(owner, text, title, flags | TOP)\r\n\r\n\r\ndef send(hwnd, text):\r\n    buf = ctypes.create_unicode_buffer(text)\r\n    cds = COPYDATASTRUCT(1, ctypes.sizeof(buf), ctypes.cast(buf, ctypes.c_void_p))\r\n    res = ctypes.c_size_t()\r\n    user32.SendMessageTimeoutW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM,\r\n                                           wintypes.LPARAM, wintypes.UINT, wintypes.UINT,\r\n                                           ctypes.POINTER(ctypes.c_size_t)]\r\n    return bool(user32.SendMessageTimeoutW(hwnd, 0x004A, 0, ctypes.addressof(cds),\r\n                                           0x0002, 3000, ctypes.byref(res)))\r\n\r\n\r\ndef run():\r\n    hwnd, title = find_cad_window()\r\n    report = '\\n'.join(l for l in lines if not l.startswith(tag)\r\n                       and not l.startswith('Node 2') and not l.startswith('Running it'))\r\n    name = 'TIF coordinate check'\r\n\r\n    if any(l.startswith('CANCELLED') for l in lines):\r\n        return 'Cancelled - no TIF selected.'\r\n\r\n    if any(l.startswith('ERROR') for l in lines):\r\n        msg('This TIF can NOT be attached at real coordinates.\\n\\n' + report,\r\n            name + ' - FAILED', MB_OK | ICON_ERR, hwnd)\r\n        return 'Check failed - see message.'\r\n\r\n    warned = any('WARNING' in l for l in lines)\r\n    if not scr:\r\n        msg(report, name, MB_OK | (ICON_WARN if warned else ICON_INFO), hwnd)\r\n        return 'Checked only (Create = False).'\r\n\r\n    head = ('Coordinates found, but check the warnings below.\\n\\n' if warned\r\n            else 'The TIF is coordinated.\\n\\n')\r\n    if msg(head + report + '\\n\\nAttach it to the drawing now?', name,\r\n           MB_YESNO | (ICON_WARN if warned else ICON_Q), hwnd) != IDYES:\r\n        return 'Cancelled - nothing attached. Script kept: ' + scr\r\n\r\n    if not hwnd:\r\n        return 'Could not find the Civil 3D window. Run it by hand: SCRIPT > ' + scr\r\n    if send(hwnd, '(command \"_.SCRIPT\" \"{}\")\\n'.format(scr.replace('\\\\', '/'))):\r\n        return 'Sent to ' + title + ' - the image attaches when this run finishes.'\r\n    return 'Civil 3D did not accept the message. Run it by hand: SCRIPT > ' + scr\r\n\r\n\r\ntry:\r\n    OUT = run()\r\nexcept Exception as ex:\r\n    OUT = 'Auto-run failed ({}). Run it by hand: SCRIPT > {}'.format(ex, scr)\r\n",
+      "Engine": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "af33018d73b5411e95320278b20102a2",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [
+        {
+          "Id": "55973d17e6c14ee1ac7e4257f1f5e79d",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "d400fd9f8c82487ca08f36b750c08b3a",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "WatchWidth": 420.0,
+      "WatchHeight": 250.0,
+      "Id": "5d95c80840ca4db1a19928f94630d6ad",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "f385f866d5e9427a936a6900f8d26c6f",
+          "Name": "",
+          "Description": "Input",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "7899d2b3e7d045808be098e8dda74285",
+          "Name": "",
+          "Description": "Output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualizes a node's output"
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "d427a961e9674cec940d6aa2d0bdc4fb",
+      "End": "050e6c1d68df40d1b60d08cc7da1f526",
+      "Id": "fda422997eb24dc091c9150fba710d97",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "c6de03cdb38e41d497bb8b3ff39eb9b4",
+      "End": "12a0899ce70949bf91b3745fd9b85870",
+      "Id": "21a824bd213243fe9f904dbbeaa409fe",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "e61676d4f7414131be662c645ae38b32",
+      "End": "1540c3918bf24f3db08cfd5fb7c90830",
+      "Id": "9f8df0eea1884953831cb78409777817",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "e61676d4f7414131be662c645ae38b32",
+      "End": "55973d17e6c14ee1ac7e4257f1f5e79d",
+      "Id": "6cce4c270ba34f83b07b08c8e8cd69d9",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "d400fd9f8c82487ca08f36b750c08b3a",
+      "End": "f385f866d5e9427a936a6900f8d26c6f",
+      "Id": "ee2a964385bb427b9d181a3511dabfeb",
+      "IsHidden": "False"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [],
+  "EnableLegacyPolyCurveBehavior": true,
+  "Thumbnail": "",
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [
+    {
+      "ExtensionGuid": "28992e1d-abb9-417f-8b1b-05e053bee670",
+      "Name": "Properties",
+      "Version": "2.19",
+      "Data": {}
+    }
+  ],
+  "Author": "",
+  "Linting": {
+    "activeLinter": "None",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": true,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "3.7.0.11777",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "_Background Preview",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "ConnectorPins": [],
+    "NodeViews": [
+      {
+        "Id": "75bcd320318e464a90ed229fe5e5e13a",
+        "Name": "Layer for image",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -49.09090909090901,
+        "Y": 0.0
+      },
+      {
+        "Id": "385fb681f0014c87aae292a84175c1b6",
+        "Name": "Create",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -45.45454545454538,
+        "Y": 160.0
+      },
+      {
+        "Id": "00571fd97aa34b0d9ecb86edd6f3e005",
+        "Name": "Write .scr (no dialogs)",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 480.0,
+        "Y": 80.0
+      },
+      {
+        "Id": "f44b2a444f8b4d07a37f5ac4f0fae93d",
+        "Name": "Result",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 900.0,
+        "Y": 80.0
+      },
+      {
+        "Id": "af33018d73b5411e95320278b20102a2",
+        "Name": "Check coordinates + attach",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 900.0,
+        "Y": 560.0
+      },
+      {
+        "Id": "5d95c80840ca4db1a19928f94630d6ad",
+        "Name": "Run status",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 1300.0,
+        "Y": 560.0
+      }
+    ],
+    "Annotations": [
+      {
+        "Id": "cd7713fa7be1416885544a45b1717f9e",
+        "Title": "1 INPUTS",
+        "DescriptionText": "Run the graph: an Open dialog asks for the TIF. Create = False only checks coordinates; Create = True checks, asks, then attaches.",
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [
+          "75bcd320318e464a90ed229fe5e5e13a",
+          "385fb681f0014c87aae292a84175c1b6"
+        ],
+        "HasNestedGroups": false,
+        "Left": -59.09090909090901,
+        "Top": -116.0,
+        "Width": 217.63636363636363,
+        "Height": 408.0,
+        "FontSize": 28.0,
+        "GroupStyleId": "07655dc1-2d65-4fed-8d6a-37235d3e3a8d",
+        "InitialTop": 0.0,
+        "InitialHeight": 305.0,
+        "TextblockHeight": 106.0,
+        "Background": "#FFA4E1FF"
+      },
+      {
+        "Id": "2d685407288b469fa46c7aa3bcc730c7",
+        "Title": "2 WRITE SCRIPT",
+        "DescriptionText": "Reads the GeoTIFF and writes a .scr next to it.",
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [
+          "00571fd97aa34b0d9ecb86edd6f3e005"
+        ],
+        "HasNestedGroups": false,
+        "Left": 470.0,
+        "Top": 7.0,
+        "Width": 258.0,
+        "Height": 233.0,
+        "FontSize": 28.0,
+        "GroupStyleId": "07655dc1-2d65-4fed-8d6a-37235d3e3a8d",
+        "InitialTop": 80.0,
+        "InitialHeight": 145.0,
+        "TextblockHeight": 63.0,
+        "Background": "#FFFFC999"
+      },
+      {
+        "Id": "9cfbe25f890a42f8a3064b4c7b19979c",
+        "Title": "3 RESULT",
+        "DescriptionText": "Shows image extents, format warnings and the .scr path. In Civil 3D: SCRIPT > pick that file.",
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [
+          "f44b2a444f8b4d07a37f5ac4f0fae93d"
+        ],
+        "HasNestedGroups": false,
+        "Left": 890.0,
+        "Top": -7.0,
+        "Width": 297.0,
+        "Height": 429.0,
+        "FontSize": 28.0,
+        "GroupStyleId": "07655dc1-2d65-4fed-8d6a-37235d3e3a8d",
+        "InitialTop": 80.0,
+        "InitialHeight": 145.0,
+        "TextblockHeight": 77.0,
+        "Background": "#FFB9F9E1"
+      },
+      {
+        "Id": "13d6f3427122437db915363d9b864756",
+        "Title": "4 CHECK + ATTACH",
+        "DescriptionText": "Pops up the coordinate check. Yes = attach in Civil 3D, No = cancel.",
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [
+          "af33018d73b5411e95320278b20102a2",
+          "5d95c80840ca4db1a19928f94630d6ad"
+        ],
+        "HasNestedGroups": false,
+        "Left": 890.0,
+        "Top": 496.0,
+        "Width": 917.0,
+        "Height": 406.0,
+        "FontSize": 28.0,
+        "GroupStyleId": "07655dc1-2d65-4fed-8d6a-37235d3e3a8d",
+        "InitialTop": 560.0,
+        "InitialHeight": 145.0,
+        "TextblockHeight": 54.0,
+        "Background": "#FFC1D676"
+      }
+    ],
+    "X": 115.56241738778101,
+    "Y": 158.00537060364337,
+    "Zoom": 0.44741660078125006
+  }
+}
